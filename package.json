@@ -1,0 +1,53 @@
+{
+  "name": "radiation-report-generator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "build:template": "tsx scripts/build-template.ts",
+    "build:asbestos-tables": "tsx scripts/build-asbestos-tables-template.ts",
+    "build:asbestos": "tsx scripts/build-asbestos-template.ts",
+    "build:mold": "tsx scripts/build-mold-template.ts",
+    "build:iaq": "tsx scripts/build-iaq-template.ts",
+    "seed:iaq": "tsx scripts/seed-template.ts templates/iaq-template.docx --kind=iaq",
+    "seed": "tsx scripts/seed-template.ts",
+    "typecheck": "tsc --noEmit",
+    "test:measurement-profile": "tsx scripts/smoke-measurement-profile.ts",
+    "test:antenna-radius": "tsx scripts/smoke-antenna-radius.ts",
+    "test:flexible-radiation": "tsx scripts/smoke-flexible-radiation.ts",
+    "seed:customers": "tsx scripts/seed-customers.ts",
+    "test": "tsx scripts/smoke-merge.ts && tsx scripts/smoke-photos.ts && tsx scripts/smoke-photo-intake.ts && tsx scripts/smoke-keep-photos.ts && tsx scripts/smoke-required-fields.ts && tsx scripts/smoke-recipient.ts && tsx scripts/smoke-wording.ts && tsx scripts/smoke-marks.ts && tsx scripts/smoke-slots.ts && tsx scripts/smoke-numbering.ts && tsx scripts/smoke-antenna-map-rule.ts && tsx scripts/smoke-antenna-map-layout.ts && tsx scripts/smoke-antenna-radius.ts && tsx scripts/smoke-radon.ts && tsx scripts/smoke-asbestos.ts && tsx scripts/smoke-draft-save.ts && tsx scripts/smoke-list-title.ts && tsx scripts/smoke-appendix.ts && tsx scripts/smoke-asbestos-tables.ts && tsx scripts/smoke-building-photos.ts && tsx scripts/smoke-mold.ts && tsx scripts/smoke-iaq-date-defaults.ts && tsx scripts/smoke-iaq-empty-draft-rows.ts && tsx scripts/smoke-iaq-empty-docx-rows.ts && tsx scripts/smoke-iaq-normal-table-notes.ts && tsx scripts/smoke-iaq.ts && tsx scripts/smoke-iaq-photos.ts",
+    "seed:signatures": "tsx scripts/seed-signatures.ts",
+    "seed:all": "npm run seed && npm run seed:customers && npm run seed:signatures",
+    "scan:fields": "tsx scripts/scan-fields.ts",
+    "collapse": "tsx scripts/collapse-protocols.ts",
+    "import:crm": "tsx scripts/import-crm-customers.ts"
+  },
+  "dependencies": {
+    "@sparticuz/chromium": "^153.0.0",
+    "docxtemplater": "^3.50.0",
+    "next": "^15.1.0",
+    "pdfjs-dist": "^5.4.624",
+    "pg": "^8.23.0",
+    "pizzip": "^3.1.7",
+    "puppeteer-core": "^25.13.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "sharp": "^0.34.5",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}

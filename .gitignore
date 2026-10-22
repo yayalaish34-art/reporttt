@@ -1,0 +1,20 @@
+node_modules/
+.next/
+out/
+data/
+*.log
+
+# Secrets
+.env.local
+.env*.local
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+
+# Hebrew sample reports kept at root during local testing — not for the repo
+*.doc
+*.docx
+!templates/*.docx
+
+# Word lock files
+templates/~$*.docx

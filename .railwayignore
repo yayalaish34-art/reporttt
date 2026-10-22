@@ -1,0 +1,25 @@
+node_modules
+.next
+out
+data
+.env.local
+.env*.local
+
+# The signed source report and the working copy carry real customer data and
+# real measurements. Only the finished template is needed at runtime; the build
+# that consumes these runs on a workstation, never in production.
+templates/source
+templates/new_report-template.docx
+templates/field-map.json
+
+# Word's lock files for documents left open.
+templates/~$*
+
+# TypeScript incremental build artefact. Nixpacks mistakes it for a cache
+# directory and the build fails mounting a file as one.
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# Local antenna rendering/integration-test outputs.
+scripts/antenna-map-test.png
+scripts/test-antenna-report*.docx
