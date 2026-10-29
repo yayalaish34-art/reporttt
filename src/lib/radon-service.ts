@@ -11,6 +11,7 @@ import { buildRadonMergeData, radonFileName, radonSubject } from './radon-mapper
 import { computeRadonFindings, describeRadonFindings } from './radon-rules';
 import { DraftRadonReportSchema, type DraftRadonReport, type RadonReport } from './radon-schema';
 import { storedReportTitle } from './report-title';
+import { customerOf, recordJob } from './job-numbers';
 
 /**
  * Radon report persistence and generation.
@@ -124,10 +125,16 @@ export interface GeneratedRadon {
   durationMs: number;
 }
 
-export async function generateRadonReport(report: RadonReport): Promise<GeneratedRadon> {
+export async function generateRadonReport(
+  report: RadonReport,
+  reportId?: string,
+): Promise<GeneratedRadon> {
   const started = process.hrtime.bigint();
   const template = await rewordSummary(activeTemplateBytes('radon'), report);
   const bytes = mergeDocx(template, buildRadonMergeData(report));
+
+  // The job-number register: this report's number, issued on first production.
+  recordJob('radon', reportId, { customerName: customerOf(report), inspectorName: '' });
 
   return {
     bytes,

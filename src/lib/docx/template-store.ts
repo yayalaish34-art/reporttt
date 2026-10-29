@@ -163,6 +163,8 @@ function upgradeLegacyIaqTemplate(kind: TemplateKind): void {
  */
 const SUPERSEDED_MOLD_TEMPLATES = new Set([
   '7011ef6ef907e861e92ecee8d97bc1d56c448811f2ec7197c9516456d04b6675',
+  // Before "שעת הדיגום" printed beside the sampling date.
+  '2e2e3658c9313fcda6a7bbd52624adb952c1c920c084598ee4b270300b2098b0',
 ]);
 
 function upgradeBundledMoldTemplate(kind: TemplateKind): void {
@@ -180,7 +182,7 @@ function upgradeBundledMoldTemplate(kind: TemplateKind): void {
   storeTemplate(
     bytes,
     'mold-template.docx',
-    'שדרוג אוטומטי: נספח התמונות לפני דוח Hayes, ״כתובת״ בסעיף 1',
+    'שדרוג אוטומטי לתבנית המצורפת (נספחים, ״כתובת״, שעת הדיגום)',
     'mold',
   );
   console.log('תבנית העובשים עודכנה לגרסה המצורפת');

@@ -467,7 +467,7 @@ export async function prepareMoldChainOfCustody(id: string, data: unknown): Prom
   if (!parsed.success) return { ok: false, error: 'הדוח אינו תקין' };
 
   try {
-    const report = await prepareChainOfCustody(parsed.data as MoldReport);
+    const report = await prepareChainOfCustody(parsed.data as MoldReport, id);
     saveMoldReport(id, {
       ...report,
       photos: keepStoredPhotos('mold_photos', id, report.photos, report.labSheets),

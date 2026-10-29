@@ -1,5 +1,5 @@
 import { AiDraftError, aiDraftingAvailable, callOpenAi } from './ai-text';
-import { db } from './db';
+import { customerOf, ensureJobNumber } from './job-numbers';
 import { chainOfCustody, cocSamples, englishRoomName, withCocNumbers } from './mold-coc';
 import type { MoldReport } from './mold-schema';
 
@@ -11,22 +11,6 @@ import type { MoldReport } from './mold-schema';
  * written into the rooms. The result is stored and handed back to the editor, so what
  * the surveyor sees afterwards is exactly what the PDF printed.
  */
-
-/** The first job number this system hands out; earlier jobs were numbered by hand. */
-const FIRST_JOB_NUMBER = 817;
-
-/** The next Hayes job number — one above the highest any mould report carries. */
-export function nextMoldJobNumber(): string {
-  const rows = db()
-    .prepare(`SELECT json_extract(data, '$.coc.jobNumber') AS job FROM mold_reports`)
-    .all() as Array<{ job: unknown }>;
-  let highest = FIRST_JOB_NUMBER - 1;
-  for (const row of rows) {
-    const n = Number(String(row.job ?? '').trim());
-    if (Number.isInteger(n)) highest = Math.max(highest, n);
-  }
-  return String(highest + 1);
-}
 
 const HEBREW = /[֐-׿]/;
 
@@ -66,10 +50,19 @@ async function toEnglish(texts: string[]): Promise<Map<string, string>> {
   return out;
 }
 
-export async function prepareChainOfCustody(report: MoldReport): Promise<MoldReport> {
-  let next: MoldReport = report.coc.jobNumber.trim()
-    ? report
-    : { ...report, coc: { ...report.coc, jobNumber: nextMoldJobNumber() } };
+export async function prepareChainOfCustody(report: MoldReport, reportId: string): Promise<MoldReport> {
+  /*
+   * The job number comes from the system-wide register (from 817) — the same number
+   * the report keeps when it is produced. A number typed onto the form is kept if no
+   * other job holds it.
+   */
+  const jobNumber = ensureJobNumber(
+    'mold',
+    reportId,
+    { customerName: customerOf(report), inspectorName: report.samplerName || report.inspectorName },
+    report.coc.jobNumber,
+  );
+  let next: MoldReport = { ...report, coc: { ...report.coc, jobNumber: String(jobNumber) } };
 
   // What the form would print as things stand — Hebrew anywhere in it is what goes to
   // the model.

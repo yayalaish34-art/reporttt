@@ -1184,6 +1184,21 @@ function RoomPhotos({
   );
 }
 
+/** "29.10.2026, 08:00" → "29.10.2026". */
+function surveyDay(value: string): string {
+  return value.split(',')[0]?.trim() ?? '';
+}
+
+/** "29.10.2026, 08:00" → "08:00" — the first time written after the date, or ''. */
+function surveyTime(value: string): string {
+  const m = value.split(',').slice(1).join(',').match(/(\d{1,2}):(\d{2})/);
+  return m ? `${m[1].padStart(2, '0')}:${m[2]}` : '';
+}
+
+function joinSurveyDateTime(day: string, time: string): string {
+  return time ? `${day}, ${time}` : day;
+}
+
 /**
  * A single-line field.
  *
@@ -1482,21 +1497,35 @@ function DetailsSection({
           hint="כתובת האתר שנדגם — לא כתובת המשרדים. מודפס בסעיף 1 וקובע את שם הקובץ."
         />
 
-        <Text
-          label="תאריך הבקשה"
-          value={report.requestDate}
-          onChange={(v) => update({ requestDate: v })}
-          hint="מולא בתאריך פתיחת הדוח — ניתן לשנות"
-        />
+        {/*
+          The date and the time, stored together as "29.10.2026, 08:00" — the shape
+          `surveyDateTime` always had. The date is today by default: the report is
+          opened on the day of the visit.
+        */}
+        <div className="field">
+          <label>שעת הדיגום</label>
+          <input
+            type="time"
+            className="ltr"
+            value={surveyTime(report.surveyDateTime)}
+            onChange={(e) =>
+              update({ surveyDateTime: joinSurveyDateTime(surveyDay(report.surveyDateTime), e.target.value) })
+            }
+          />
+          <span className="hint">מודפס ליד מועד הדיגום, בשער ובסעיף 1</span>
+        </div>
 
-        {/* A date, filled with today: the report is opened on the day of the visit. */}
         <div className="field">
           <label>מועד הדיגום</label>
           <input
             type="date"
             className="ltr"
             value={isoFromNumeric(report.surveyDateTime)}
-            onChange={(e) => update({ surveyDateTime: numericFromIso(e.target.value) })}
+            onChange={(e) =>
+              update({
+                surveyDateTime: joinSurveyDateTime(numericFromIso(e.target.value), surveyTime(report.surveyDateTime)),
+              })
+            }
           />
         </div>
 

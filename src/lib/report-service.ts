@@ -19,6 +19,7 @@ import { buildMergeData, inspectorsForScope, reportListTitle, reportSubject } fr
 import { storedReportTitle } from './report-title';
 import { StoredReportSchema, type DraftReport, type Report } from './report-schema';
 import { measuredProtocols, shouldIncludeAntennaMap } from './measurement-rules';
+import { customerOf, recordJob } from './job-numbers';
 
 /**
  * Report persistence and generation.
@@ -281,6 +282,12 @@ export async function generateReport(report: Report, reportId?: string): Promise
         authors: report.authors.map(withSignature),
       };
     },
+  });
+
+  // The job-number register: this report's number, issued on first production.
+  recordJob('radiation', reportId, {
+    customerName: customerOf(report),
+    inspectorName: report.inspectors.map((i) => i.name.trim()).filter(Boolean).join(', '),
   });
 
   return {

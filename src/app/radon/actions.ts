@@ -146,7 +146,7 @@ export async function finishRadonReport(id: string, data: unknown): Promise<Rado
   }
 
   try {
-    const { bytes, fileName } = await generateRadonReport(report);
+    const { bytes, fileName } = await generateRadonReport(report, id);
     const { documentId } = await fileReportOnCustomerCard(report as never, bytes, fileName);
     if (documentId !== report.crmDocumentId) {
       saveRadonReport(id, { ...report, crmDocumentId: documentId });

@@ -748,6 +748,11 @@ if (!existsSync(TEMPLATE)) {
   const mergedText = textOf(new PizZip(merged).file('word/document.xml')!.asText());
 
   check(photosXml !== '<w:p/>', 'buildPhotosXml בונה XML אמיתי כשיש תמונה');
+  check(
+    mergedText.split('30/07/2026, בשעה 08:00-09:30').length - 1 === 2,
+    'שעת הדיגום מודפסת ליד התאריך — בשער ובסעיף 1',
+  );
+  check(mergedText.includes('collected 30/07/2026, received'), 'שורת Hayes — תאריך בלבד');
   check(mergedText.includes('נספח א׳ – תמונות מהסקר'), 'כותרת הנספח מודפסת');
   check(
     mergedText.indexOf('נספח א׳ – תמונות מהסקר') < mergedText.indexOf('נספח ב׳ – דוח המעבדה של Hayes'),

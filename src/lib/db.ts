@@ -169,6 +169,25 @@ function migrate(handle: DatabaseSync): void {
      * reaches several mailboxes — so the same PDF arrives here many times. One row per
      * e-mail is what makes the second arrival a no-op instead of a second report.
      */
+    /**
+     * The job-number register — one running sequence for every department.
+     *
+     * A report takes its number the first time it is produced and keeps it on every
+     * production after; the row records who it was for, who carried it out and which
+     * service, so the office can account for every number handed out.
+     */
+    CREATE TABLE IF NOT EXISTS job_numbers (
+      job_number     INTEGER PRIMARY KEY,
+      kind           TEXT NOT NULL,
+      report_id      TEXT NOT NULL,
+      customer_name  TEXT NOT NULL DEFAULT '',
+      inspector_name TEXT NOT NULL DEFAULT '',
+      service        TEXT NOT NULL DEFAULT '',
+      created_at     TEXT NOT NULL,
+      updated_at     TEXT NOT NULL,
+      UNIQUE (kind, report_id)
+    );
+
     CREATE TABLE IF NOT EXISTS mold_intake (
       message_id   TEXT PRIMARY KEY,
       report_id    TEXT NOT NULL,

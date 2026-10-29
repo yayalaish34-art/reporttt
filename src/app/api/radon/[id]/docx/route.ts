@@ -19,7 +19,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   }
 
   try {
-    const { bytes, fileName } = await generateRadonReport(report);
+    const { bytes, fileName } = await generateRadonReport(report, id);
 
     // Filing is never allowed to fail the download — the surveyor asked for a
     // document and the document is ready.

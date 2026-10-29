@@ -103,6 +103,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <Link href="/asbestos">דוח אסבסט</Link>
               <Link href="/mold">דוח עובשים</Link>
               <Link href="/iaq">איכות אוויר</Link>
+              <Link href="/jobs">Job Number</Link>
               <Link href="/inspectors">בודקים</Link>
               <Link href="/templates">תבניות</Link>
             </nav>

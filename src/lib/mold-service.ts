@@ -15,6 +15,7 @@ import {
   type DraftMoldReport,
   type MoldReport,
 } from './mold-schema';
+import { customerOf, recordJob } from './job-numbers';
 
 /**
  * Mould report persistence and generation.
@@ -308,6 +309,15 @@ export async function generateMoldReport(
     photosXml,
     labSheetsXml,
   });
+
+  // The job-number register: this report's number, issued on first production.
+  // A number typed onto the Chain of Custody is kept — see `ensureJobNumber`.
+  recordJob(
+    'mold',
+    reportId,
+    { customerName: customerOf(report), inspectorName: report.samplerName || report.inspectorName },
+    report.coc.jobNumber,
+  );
 
   return {
     bytes,

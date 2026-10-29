@@ -22,6 +22,7 @@ import {
   type DraftAsbestosReport,
   type AsbestosReport,
 } from './asbestos-schema';
+import { customerOf, recordJob } from './job-numbers';
 
 /**
  * Asbestos opinion persistence and generation.
@@ -394,6 +395,9 @@ export async function generateAsbestosReport(
     ...buildAsbestosMergeData(worded, (_building, index) => buildingsXml.get(index) ?? '<w:p/>'),
     photosXml,
   });
+
+  // The job-number register: this report's number, issued on first production.
+  recordJob('asbestos', reportId, { customerName: customerOf(report), inspectorName: '' });
 
   return {
     bytes,

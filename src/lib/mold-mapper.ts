@@ -328,6 +328,15 @@ export function buildMoldMergeData(report: MoldReport): Record<string, unknown> 
      * the table wants the day alone.
      */
     surveyDate: report.surveyDateTime.split(',')[0]?.trim() ?? '',
+    /**
+     * ", בשעה 08:00" after the date where §1 and the cover print it — the time the
+     * editor stores after the comma. Empty when no time was given, so the date stands
+     * alone. Not used in the Hayes reference line, which cites the collection date only.
+     */
+    surveyTimeSuffix: (() => {
+      const time = report.surveyDateTime.split(',').slice(1).join(',').trim();
+      return time ? `, בשעה ${time}` : '';
+    })(),
     /*
      * When this revision was produced.
      *

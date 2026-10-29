@@ -15,6 +15,7 @@ import {
 } from './iaq-schema';
 import { storedReportTitle } from './report-title';
 import { iaqReportLocations } from './iaq-rules';
+import { customerOf, recordJob } from './job-numbers';
 
 /**
  * דוח איכות אוויר תוך-מבנית — שכבת ה-persistence וה-generation.
@@ -226,6 +227,9 @@ export async function generateIaqReport(
     ...buildIaqMergeData(report),
     photosXml,
   });
+
+  // The job-number register: this report's number, issued on first production.
+  recordJob('iaq', reportId, { customerName: customerOf(report), inspectorName: report.authorName });
 
   return {
     bytes,
