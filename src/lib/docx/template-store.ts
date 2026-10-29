@@ -110,6 +110,7 @@ function ensureSeeded(kind: TemplateKind = 'radiation'): void {
     .get(kind) as { n: number };
   if (Number(existing.n) > 0) {
     upgradeLegacyIaqTemplate(kind);
+    upgradeBundledMoldTemplate(kind);
     return;
   }
 
@@ -150,6 +151,39 @@ function upgradeLegacyIaqTemplate(kind: TemplateKind): void {
     'iaq',
   );
   console.log('תבנית איכות האוויר הישנה הוחלפה בתבנית המקורית של גלית');
+}
+
+/**
+ * Mould templates that shipped in the image and were seeded as-is.
+ *
+ * The bundled template moved the photo appendix ahead of the Hayes sheets and renamed
+ * §1's "מיקום" to "כתובת". A database still running an earlier bundled file is
+ * upgraded to the current one; a template somebody uploaded has a different hash and
+ * is never touched.
+ */
+const SUPERSEDED_MOLD_TEMPLATES = new Set([
+  '7011ef6ef907e861e92ecee8d97bc1d56c448811f2ec7197c9516456d04b6675',
+]);
+
+function upgradeBundledMoldTemplate(kind: TemplateKind): void {
+  if (kind !== 'mold') return;
+  const active = db()
+    .prepare('SELECT sha256 FROM templates WHERE kind = ? AND is_active = 1 LIMIT 1')
+    .get(kind) as { sha256: string } | undefined;
+  if (!active || !SUPERSEDED_MOLD_TEMPLATES.has(String(active.sha256))) return;
+
+  const bundled = resolve(process.cwd(), TEMPLATE_KINDS.mold.bundled);
+  if (!existsSync(bundled)) return;
+  const bytes = readFileSync(bundled);
+  if (SUPERSEDED_MOLD_TEMPLATES.has(createHash('sha256').update(bytes).digest('hex'))) return;
+
+  storeTemplate(
+    bytes,
+    'mold-template.docx',
+    'שדרוג אוטומטי: נספח התמונות לפני דוח Hayes, ״כתובת״ בסעיף 1',
+    'mold',
+  );
+  console.log('תבנית העובשים עודכנה לגרסה המצורפת');
 }
 
 /**

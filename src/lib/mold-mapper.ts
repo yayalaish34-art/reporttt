@@ -15,6 +15,7 @@ import {
   realSamples,
   surfaceSamples,
   waterDamageMarkersIn,
+  moistureText,
 } from './mold-rules';
 
 /**
@@ -196,12 +197,12 @@ export function buildMoldMergeData(report: MoldReport): Record<string, unknown> 
    * printing anyway would contradict the report's own "לא בוצעה בדיקת לחות".
    */
   const moistureSummaryRows = (report.moistureSurveyed !== 'כן' ? [] : indoor)
-    .filter((sample) => sample.moistureReading.trim() !== '')
+    .filter((sample) => moistureText(sample) !== '')
     .map((sample) => {
       const result = labResultFor(report, sample);
       return {
         location: sample.location.trim() || result?.sampleName || '',
-        reading: sample.moistureReading.trim(),
+        reading: moistureText(sample),
         assessment: result ? draftedFor(report.moistureAssessments, sample, result) : '',
       };
     });
@@ -403,7 +404,7 @@ export function buildMoldMergeData(report: MoldReport): Record<string, unknown> 
             ? '—'
             : isOutdoorSample(sample)
               ? 'לא נמדדה'
-              : sample.moistureReading.trim() || '—',
+              : moistureText(sample) || '—',
       })),
 
     /** §2 and §3 — drafted from the results, printed a bullet each. */

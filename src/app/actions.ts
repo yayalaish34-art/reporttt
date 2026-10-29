@@ -15,7 +15,12 @@ import {
   saveReport,
 } from '@/lib/report-service';
 import { crmApiConfigured, fileReportOnCustomerCard } from '@/lib/crm-filing';
-import { crmConfigured, importCrmCustomers, refreshCrmCustomer } from '@/lib/crm-import';
+import {
+  crmConfigured,
+  importCrmCustomers,
+  refreshCrmCustomer,
+  syncCrmCustomersIfStale,
+} from '@/lib/crm-import';
 import { listCustomerContacts, type CrmContact } from '@/lib/crm-contacts';
 import { acceptPhoto } from '@/lib/photo-intake';
 import { keepStoredPhotos } from '@/lib/keep-photos';
@@ -552,6 +557,8 @@ export async function freshCustomer(customerId: string): Promise<Customer | null
 }
 
 export async function findCustomers(query: string, limit = 15): Promise<Customer[]> {
+  // Picks up customers opened in the CRM since the last sync, at most once an hour.
+  await syncCrmCustomersIfStale();
   return searchCustomers(query, limit);
 }
 

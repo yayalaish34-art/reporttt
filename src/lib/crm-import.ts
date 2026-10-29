@@ -110,6 +110,131 @@ export async function importCrmCustomers(): Promise<CrmImportResult> {
 }
 
 /**
+ * The newest CRM `updatedAt` already copied, so each sync asks only for what
+ * changed since. Taken from the CRM's own rows rather than this server's clock —
+ * the two machines need not agree on the time.
+ *
+ * Stored in the database rather than in memory, so a restart or deploy carries on
+ * from where it was instead of re-importing the whole directory. Only the very
+ * first sync on a deployment is a full import.
+ */
+const WATERMARK_KEY = 'crm_customers_synced_up_to';
+
+function readWatermark(): Date | null {
+  const handle = db();
+  handle.exec('CREATE TABLE IF NOT EXISTS sync_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
+  const row = handle.prepare('SELECT value FROM sync_state WHERE key = ?').get(WATERMARK_KEY) as
+    | { value: string }
+    | undefined;
+  return row ? new Date(row.value) : null;
+}
+
+function writeWatermark(at: Date) {
+  db()
+    .prepare(
+      `INSERT INTO sync_state (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    )
+    .run(WATERMARK_KEY, at.toISOString());
+}
+
+let lastSyncAt = 0;
+let running: Promise<number> | null = null;
+
+/**
+ * Copies customers created or edited in the CRM since the last sync.
+ *
+ * Without this the directory was only as new as the last press of "import": a
+ * customer opened in the CRM this morning was not there to pick this afternoon.
+ * It runs on a slow timer (see `instrumentation.ts`) and before a search when the
+ * last sync is old, so a new customer shows up without anyone pressing import.
+ *
+ * Returns how many rows were copied. Concurrent callers share the one run.
+ */
+export function syncCrmCustomers(): Promise<number> {
+  if (!crmConfigured()) return Promise.resolve(0);
+  running ??= runSync().finally(() => {
+    running = null;
+  });
+  return running;
+}
+
+/**
+ * The sync for a search: skipped when one ran moments ago, and never allowed to
+ * hold the search up for long — a slow CRM costs the newest rows, not the results.
+ */
+export async function syncCrmCustomersIfStale(maxAgeMs = 60 * 60_000, waitMs = 2000): Promise<void> {
+  if (!crmConfigured() || Date.now() - lastSyncAt < maxAgeMs) return;
+  await Promise.race([
+    syncCrmCustomers().catch(() => 0),
+    new Promise((resolve) => setTimeout(resolve, waitMs)),
+  ]);
+}
+
+async function runSync(): Promise<number> {
+  const syncedUpTo = readWatermark();
+  if (!syncedUpTo) {
+    // First sync on this deployment: the whole directory, then incremental from
+    // the newest row it held.
+    const crm = await connectCrm();
+    let newest: Date | null;
+    try {
+      const { rows } = await crm.query(`SELECT MAX("updatedAt") AS m FROM "Customer"`);
+      newest = rows[0]?.m ? new Date(rows[0].m) : null;
+    } finally {
+      await crm.end().catch(() => undefined);
+    }
+    const r = await importCrmCustomers();
+    writeWatermark(newest ?? new Date(0));
+    lastSyncAt = Date.now();
+    return r.read;
+  }
+
+  const crm = await connectCrm();
+  let rows: Array<Record<string, unknown>>;
+  try {
+    // `>=` rather than `>`: rows saved in the same millisecond as the watermark
+    // are re-copied rather than missed, and the upsert makes a re-copy harmless.
+    ({ rows } = await crm.query(
+      `SELECT id, name, "contactName", type, address, city, phone, email, "updatedAt"
+         FROM "Customer"
+        WHERE "updatedAt" >= $1 AND COALESCE(TRIM(name), '') <> ''
+        ORDER BY "updatedAt" ASC`,
+      [syncedUpTo],
+    ));
+  } finally {
+    await crm.end().catch(() => undefined);
+  }
+
+  if (rows.length > 0) {
+    const handle = db();
+    const upsert = handle.prepare(UPSERT);
+    const timestamp = now();
+    handle.exec('BEGIN');
+    try {
+      for (const r of rows) upsert.run(...toDirectoryRow(r, timestamp).values);
+      handle.exec('COMMIT');
+    } catch (e) {
+      handle.exec('ROLLBACK');
+      throw e;
+    }
+    writeWatermark(new Date(rows[rows.length - 1].updatedAt as string | Date));
+  }
+  lastSyncAt = Date.now();
+  return rows.length;
+}
+
+async function connectCrm(): Promise<Client> {
+  const crm = new Client({
+    connectionString: process.env.CRM_DATABASE_URL,
+    ssl: { rejectUnauthorized: false },
+    connectionTimeoutMillis: 10_000,
+  });
+  await crm.connect();
+  return crm;
+}
+
+/**
  * Re-reads one customer from the CRM into the directory, as they are picked.
  *
  * The directory is a copy taken whenever someone last pressed "import", and a

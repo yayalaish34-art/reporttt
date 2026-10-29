@@ -7,6 +7,7 @@ import {
   indoorAirSamples,
   outdoorAirSample,
   surfaceSamples,
+  moistureText,
 } from './mold-rules';
 import { MOISTURE_INSTRUMENT } from './mold-schema';
 import type { MoldReport } from './mold-schema';
@@ -132,8 +133,8 @@ function buildFacts(report: MoldReport): string {
         (comparison ? `; ביחס לדגימת החוץ — ${comparison}` : '; אין דגימת חוץ להשוואה') +
         (sample.note.trim() ? `; הערה: ${sample.note.trim()}` : '') +
         (moistureOn
-          ? sample.moistureReading.trim()
-            ? `; קריאת לחות בקיר סמוך: ${sample.moistureReading.trim()}`
+          ? moistureText(sample)
+            ? `; קריאות לחות בחדר: ${moistureText(sample)}`
             : '; לא נמסרה קריאת לחות עבור נקודה זו'
           : ''),
     );

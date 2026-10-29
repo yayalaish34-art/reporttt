@@ -47,8 +47,33 @@ export function toCount(value: string): number | null {
 /** The samples the surveyor actually entered — a blank row is an empty editor line. */
 export function realSamples(report: Pick<MoldReport, 'samples'>): MoldSample[] {
   return report.samples.filter(
-    (s) => s.location.trim() !== '' || s.organisms.trim() !== '' || s.totalCount.trim() !== '',
+    (s) =>
+      s.location.trim() !== '' ||
+      s.organisms.trim() !== '' ||
+      s.totalCount.trim() !== '' ||
+      s.mediaNumber.trim() !== '',
   );
+}
+
+/** "0.8" → "0.8%"; a reading that already carries its unit is left as it is. */
+export function withPercent(reading: string): string {
+  const value = reading.trim();
+  if (value === '') return '';
+  return /%$/.test(value) ? value : `${value}%`;
+}
+
+/**
+ * A room's wall-moisture readings as one line — "קיר מזרחי 0.8%, רצפה 1.3%".
+ *
+ * The per-surface readings win where any were taken; otherwise the single reading a
+ * report carried before rooms had surfaces. Every consumer — §2.1, §6.5, the drafter —
+ * reads moisture through this, so the two shapes never print differently.
+ */
+export function moistureText(sample: Pick<MoldSample, 'moistureReading' | 'wallReadings'>): string {
+  const walls = (sample.wallReadings ?? [])
+    .filter((w) => w.reading.trim() !== '')
+    .map((w) => [w.surface.trim(), withPercent(w.reading)].filter(Boolean).join(' '));
+  return walls.length > 0 ? walls.join(', ') : sample.moistureReading.trim();
 }
 
 /** The moisture readings the surveyor actually took. */
@@ -262,7 +287,44 @@ export function newSampleRow(): MoldSample {
     organisms: '',
     note: '',
     moistureReading: '',
+    mediaNumber: '',
+    wallReadings: [],
+    photoIds: [],
+    sampleNameEn: '',
+    analysis: 'S',
+    volume: '150 Lit.',
+    cocNote: '',
   };
+}
+
+/** A new outdoor control row — the reference every room is compared against. */
+export function newOutdoorSampleRow(): MoldSample {
+  return { ...newSampleRow(), location: 'חוץ', scope: 'חוץ' };
+}
+
+/**
+ * The report's photographs in appendix order: room by room, then any not tied to one.
+ *
+ * An uncaptioned photo taken in a room is captioned with the room's name, so the
+ * appendix never prints a bare "תמונה מס' 3 :".
+ */
+export function photosInRoomOrder(
+  report: Pick<MoldReport, 'photos' | 'samples'>,
+): MoldReport['photos'] {
+  const byId = new Map(report.photos.map((p) => [p.imageId, p]));
+  const ordered: MoldReport['photos'] = [];
+  const used = new Set<string>();
+  for (const sample of report.samples) {
+    const room = sample.location.trim() || (isOutdoorSample(sample) ? 'חוץ' : '');
+    for (const imageId of sample.photoIds ?? []) {
+      const photo = byId.get(imageId);
+      if (!photo || used.has(imageId)) continue;
+      used.add(imageId);
+      ordered.push({ ...photo, caption: photo.caption.trim() || room });
+    }
+  }
+  for (const photo of report.photos) if (!used.has(photo.imageId)) ordered.push(photo);
+  return ordered;
 }
 
 /** A new moisture row. */
@@ -306,12 +368,29 @@ export const LOCATION_OPTIONS = [
  */
 export function labResultFor(
   report: Pick<MoldReport, 'labResults'>,
-  sample: Pick<MoldSample, 'labNumber' | 'location'>,
+  sample: Pick<MoldSample, 'labNumber' | 'location'> & { mediaNumber?: string },
 ): LabResult | null {
   const number = sample.labNumber.trim();
   if (number) {
     const byNumber = report.labResults.find((r) => r.labNumber.trim() === number);
     if (byNumber) return byNumber;
+  }
+
+  /*
+   * The media number is what the surveyor wrote on the chain of custody, and Hayes
+   * prints it back as the sample's name or beside it. Compared without spaces and
+   * case, and only as a whole token — "12" must not claim the block named "A123".
+   */
+  const media = (sample.mediaNumber ?? '').replace(/\s+/g, '').toLowerCase();
+  if (media) {
+    const tokens = (value: string) => value.toLowerCase().split(/[^0-9a-z֐-׿-]+/).filter(Boolean);
+    const byMedia = report.labResults.find(
+      (r) =>
+        r.sampleName.replace(/\s+/g, '').toLowerCase() === media ||
+        tokens(r.sampleName).includes(media) ||
+        r.labNumber.trim().toLowerCase() === media,
+    );
+    if (byMedia) return byMedia;
   }
 
   const name = sample.location.trim();
@@ -371,5 +450,68 @@ export function sampleWithLabResult(sample: MoldSample, result: LabResult | null
     labNumber: sample.labNumber.trim() || result.labNumber,
     totalCount: sample.totalCount.trim() || result.totalPerCubicMetre,
     organisms: sample.organisms.trim() || found.join(', '),
+  };
+}
+
+/** The sheet's own particulars, as the scan reads them off the laboratory's header. */
+export interface LabSheetHeader {
+  labReportNumber: string;
+  labCollectedDate: string;
+  labReceivedDate: string;
+  labReportedDate: string;
+}
+
+/**
+ * Folds a scan of the laboratory's report into a mould report.
+ *
+ * One path for both places a scan arrives from — the editor's drop zone and the
+ * e-mail from Hayes that the CRM forwards — so a report reads the same whichever way
+ * its results came in.
+ *
+ * The scan replaces the previous reading rather than adding to it: re-scanning is how
+ * a bad read is corrected, and appending would double every block. Each block is
+ * matched to its room (media number, laboratory number, then name — `labResultFor`);
+ * a block no room claims becomes a room of its own, named as the laboratory named it
+ * and recognised as the outdoor control by that name. The sheet's number and dates
+ * fill §1 only where it is still blank — anything typed is a decision and wins.
+ */
+export function applyLabScan(
+  report: MoldReport,
+  results: LabResult[],
+  details?: Partial<LabSheetHeader>,
+): { report: MoldReport; added: number; stray: LabResult[] } {
+  const merged = { ...report, labResults: results };
+  const updated = report.samples.map((sample) => sampleWithLabResult(sample, labResultFor(merged, sample)));
+
+  const claimed = new Set(updated.map((sample) => labResultFor(merged, sample)).filter(Boolean));
+  const added = results
+    .filter((result) => !claimed.has(result))
+    .map((result) => {
+      const name = result.sampleName.trim();
+      return sampleWithLabResult(
+        {
+          ...newSampleRow(),
+          location: name,
+          scope: isOutdoorLocation(name) ? ('חוץ' as const) : ('פנים' as const),
+        },
+        result,
+      );
+    });
+
+  const samples = [...updated, ...added];
+  const fill = (current: string, value?: string) => (current.trim() || !value ? current : value);
+
+  return {
+    report: {
+      ...merged,
+      samples,
+      labReportNumber: fill(report.labReportNumber, details?.labReportNumber),
+      labReceivedDate: fill(report.labReceivedDate, details?.labReceivedDate),
+      labReportedDate: fill(report.labReportedDate, details?.labReportedDate),
+      // The sheet's "Collected" date is the day of the visit.
+      surveyDateTime: fill(report.surveyDateTime, details?.labCollectedDate),
+    },
+    added: added.length,
+    stray: unmatchedLabResults({ labResults: results, samples }),
   };
 }

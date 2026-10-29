@@ -13,27 +13,32 @@ import {
   uploadMoldLabSheet,
   uploadMoldPhoto,
 } from '../actions';
-import type { LabResult, MoldReport } from '@/lib/mold-schema';
+import type { LabResult, MoldReport, MoldSample, WallReading } from '@/lib/mold-schema';
 import {
   FLOW_VERIFICATION_OPTIONS,
   HVAC_STATE_OPTIONS,
+  COC_ANALYSIS_CODES,
   MOISTURE_INSTRUMENT,
+  MOISTURE_SURFACES,
   MOLD_STAFF,
   OPENINGS_STATE_OPTIONS,
   SAMPLING_HEIGHT_OPTIONS,
 } from '@/lib/mold-schema';
 import {
+  applyLabScan,
   describeMoldFindings,
   indoorAirSamples,
-  isOutdoorLocation,
   isOutdoorSample,
+  LOCATION_OPTIONS,
   labResultFor,
+  moistureText,
+  newOutdoorSampleRow,
   newSampleRow,
   outdoorAirSample,
+  photosInRoomOrder,
   realSamples,
-  sampleWithLabResult,
-  unmatchedLabResults,
 } from '@/lib/mold-rules';
+import { chainOfCustody, cocSamples, englishRoomName, withCocNumbers } from '@/lib/mold-coc';
 import { shrinkPhoto } from '@/lib/shrink-photo';
 import { CameraCapture, useCameraSupported } from '../../camera-capture';
 import { useCaptionPrompt } from '../../caption-prompt';
@@ -132,8 +137,25 @@ export function MoldEditor({ id, initial }: { id: string; initial: MoldReport })
         status={<SaveIndicator state={autosave.state} />}
         steps={[
           {
-            title: 'תוצאות מעבדה',
-            hint: 'צילום דוח הייס — נקרא אוטומטית לטבלאות ומצורף כנספח',
+            title: 'חדרים ותמונות',
+            hint: 'פרטי הבדיקה, החדרים — ומהם טופס Hayes (Chain of Custody) ב-PDF',
+            content: (
+              <>
+                <DetailsSection report={report} update={update} />
+                <RoomsSection
+                  id={id}
+                  report={report}
+                  update={update}
+                  setReport={setReport}
+                  onChange={autosave.saveNow}
+                />
+                <ChainOfCustodySection id={id} report={report} update={update} setReport={setReport} />
+              </>
+            ),
+          },
+          {
+            title: 'דוח מעבדה Hayes',
+            hint: 'צירוף דוח הייס — נקרא אוטומטית לטבלאות ומצורף כנספח בסוף הדוח',
             content: (
               <LabResultsStep
                 id={id}
@@ -142,13 +164,6 @@ export function MoldEditor({ id, initial }: { id: string; initial: MoldReport })
                 setReport={setReport}
                 onChange={autosave.saveNow}
               />
-            ),
-          },
-          {
-            title: 'תמונות',
-            hint: 'נספח התמונות — תמונה אחת בעמוד, ממוספרת אוטומטית',
-            content: (
-              <PhotoStep id={id} report={report} setReport={setReport} onChange={autosave.saveNow} />
             ),
           },
           {
@@ -374,12 +389,12 @@ function MoldSummary({ report }: { report: MoldReport }) {
   const samples = realSamples(report);
   const outdoor = outdoorAirSample(report);
   const indoorWithMoisture = indoorAirSamples(report).filter(
-    (s) => s.moistureReading.trim() !== '',
+    (s) => moistureText(s) !== '',
   );
 
   const rows: Array<[string, string]> = [
     ['שם המבקש', report.clientName.trim() || '—'],
-    ['כתובת הבדיקה', report.siteAddress.trim() || '—'],
+    ['כתובת', report.siteAddress.trim() || '—'],
     ['מועד הדיגום', report.surveyDateTime.trim() || '—'],
     ['מבצע הדיגום', report.samplerName.trim() || '—'],
     ['עורך הדוח', report.authorName.trim() || '—'],
@@ -397,7 +412,7 @@ function MoldSummary({ report }: { report: MoldReport }) {
 
   const missing = [
     report.clientName.trim() === '' ? 'שם המבקש' : null,
-    report.siteAddress.trim() === '' ? 'כתובת הבדיקה' : null,
+    report.siteAddress.trim() === '' ? 'כתובת' : null,
     report.surveyDateTime.trim() === '' ? 'מועד הדיגום' : null,
     report.samplerName.trim() === '' ? 'מבצע הדיגום' : null,
     report.authorName.trim() === '' ? 'עורך הדוח' : null,
@@ -409,9 +424,9 @@ function MoldSummary({ report }: { report: MoldReport }) {
     report.siteDescription.trim() === '' ? 'תיאור מקום הבדיקה' : null,
     report.executiveSummary.trim() === '' ? 'תקציר מנהלים' : null,
     report.conclusions.filter((c) => c.trim() !== '').length === 0 ? 'מסקנות' : null,
-    // נספח א׳ (דוח Hayes המלא) הוא נספח קבוע לדוח — ר' סיכום ומקורות. ללא עמוד סרוק
+    // נספח ב׳ (דוח Hayes המלא) הוא נספח קבוע לדוח — ר' סיכום ומקורות. ללא עמוד סרוק
     // אחד לפחות הכותרת מודפסת מעל נספח ריק.
-    report.labSheets.length === 0 ? 'נספח דוח Hayes (נספח א׳)' : null,
+    report.labSheets.length === 0 ? 'נספח דוח Hayes (נספח ב׳)' : null,
   ].filter(Boolean) as string[];
 
   return (
@@ -432,21 +447,488 @@ function MoldSummary({ report }: { report: MoldReport }) {
 }
 
 /**
- * The photo appendix step.
+ * Hayes' Chain of Custody, built from the rooms above and printed as the laboratory's
+ * own form.
  *
- * Numbering is deliberately not offered: the appendix numbers the pages itself, one
- * photograph per page, in the order they appear here.
+ * Every box shows, greyed, what the form will print if it is left empty — the sampler's
+ * English name and mobile, today's date, the room names in English — so the usual job
+ * is a job number and a click. Each row is a room: its number is the room's media
+ * number, which is what Hayes sends its result back under.
  */
-function PhotoStep({
+function ChainOfCustodySection({
   id,
   report,
+  update,
+  setReport,
+}: {
+  id: string;
+  report: MoldReport;
+  update: (patch: Partial<MoldReport>) => void;
+  setReport: (fn: (r: MoldReport) => MoldReport) => void;
+}) {
+  const [producing, startProducing] = useTransition();
+  const [error, setError] = useState('');
+
+  const coc = report.coc;
+  // What each header box falls back to — the form with no overrides at all.
+  const derived = chainOfCustody({
+    ...report,
+    coc: { jobNumber: coc.jobNumber, jobName: '', collector: '', mobile: '', email: '', dateCollected: '', note: '' },
+  });
+  const setCoc = (patch: Partial<MoldReport['coc']>) => update({ coc: { ...coc, ...patch } });
+  const rows = cocSamples(report);
+  const setSample = (sample: MoldSample, patch: Partial<MoldSample>) =>
+    update({ samples: report.samples.map((s) => (s === sample ? { ...s, ...patch } : s)) });
+
+  /*
+   * Saved before it is produced, with the numbers the form prints written into the
+   * rooms: the PDF is rendered from the stored report, and a room printed as "511-3"
+   * has to be findable under that number when the results come back.
+   */
+  const produce = () =>
+    startProducing(async () => {
+      setError('');
+      const next = withCocNumbers(report);
+      setReport(() => next);
+      const saved = await persistMoldReportDraft(id, next);
+      if (!saved.ok) {
+        setError(saved.error ?? 'השמירה נכשלה');
+        return;
+      }
+      try {
+        await downloadDocument(`/api/mold/${id}/coc`, 'Chain of Custody Hayes.pdf');
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'הפקת הטופס נכשלה');
+      }
+    });
+
+  const header: Array<[keyof MoldReport['coc'], string, string, boolean?]> = [
+    ['jobName', 'Job Name', derived.jobName],
+    ['collector', 'Collector', derived.collector],
+    ['mobile', 'Mobile', derived.mobile, true],
+    ['email', 'Email', derived.email, true],
+    ['note', 'Note', derived.note],
+  ];
+
+  return (
+    <div style={{ marginTop: 24 }}>
+      <strong>טבלת Hayes — Chain of Custody</strong>
+      <p className="hint">
+        הטופס שנשלח עם הדגימות למעבדה. שורה לכל חדר מלמעלה; שדה שנשאר ריק מודפס עם מה שמופיע בו באפור.
+      </p>
+
+      <div className="grid">
+        <div className="field needed" data-filled={coc.jobNumber.trim() !== '' ? 'true' : 'false'}>
+          <label>Job Number</label>
+          <input
+            className="ltr"
+            value={coc.jobNumber}
+            placeholder="511"
+            onChange={(e) => setCoc({ jobNumber: e.target.value })}
+          />
+          <span className="hint">מספרי הדגימות נגזרים ממנו — 511-1, 511-2…</span>
+        </div>
+        <div className="field">
+          <label>Date Collected</label>
+          <input
+            type="date"
+            className="ltr"
+            value={coc.dateCollected}
+            onChange={(e) => setCoc({ dateCollected: e.target.value })}
+          />
+          <span className="hint">ריק — היום ({derived.dateCollected})</span>
+        </div>
+        {header.map(([key, label, fallback, ltr]) => (
+          <div className="field" key={key}>
+            <label>{label}</label>
+            <input
+              className={ltr ? 'ltr' : undefined}
+              dir="auto"
+              value={coc[key]}
+              placeholder={fallback}
+              onChange={(e) => setCoc({ [key]: e.target.value })}
+            />
+          </div>
+        ))}
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="empty" style={{ padding: '12px' }}>
+          הוסיפו חדרים למעלה — כל חדר הוא שורה בטופס.
+        </div>
+      ) : (
+        <div className="table-scroll" style={{ marginTop: 12 }}>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Number</th>
+                <th>Sample</th>
+                <th>Analysis</th>
+                <th>Volume</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((sample, i) => (
+                <tr key={i}>
+                  <td>{i + 1}</td>
+                  <td>
+                    <input
+                      className="ltr"
+                      value={sample.mediaNumber}
+                      placeholder={derived.rows[i]?.number || 'מספר מדיה'}
+                      onChange={(e) => setSample(sample, { mediaNumber: e.target.value })}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      className="ltr"
+                      value={sample.sampleNameEn}
+                      placeholder={englishRoomName(sample)}
+                      onChange={(e) => setSample(sample, { sampleNameEn: e.target.value })}
+                    />
+                  </td>
+                  <td>
+                    <select
+                      value={sample.analysis}
+                      onChange={(e) => setSample(sample, { analysis: e.target.value })}
+                    >
+                      {COC_ANALYSIS_CODES.map((code) => (
+                        <option key={code} value={code}>
+                          {code}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <input
+                      className="ltr"
+                      value={sample.volume}
+                      placeholder="150 Lit."
+                      onChange={(e) => setSample(sample, { volume: e.target.value })}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      className="ltr"
+                      value={sample.cocNote}
+                      onChange={(e) => setSample(sample, { cocNote: e.target.value })}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="protocols-bare-actions" style={{ marginTop: 12 }}>
+        <button
+          type="button"
+          className="btn-primary btn-sm"
+          disabled={producing || rows.length === 0}
+          onClick={produce}
+        >
+          {producing ? 'מפיק…' : '📄 הפקת טופס Hayes (PDF)'}
+        </button>
+        {error && <span className="hint error-text">{error}</span>}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The rooms of the survey — one card per sampling point, indoors or out.
+ *
+ * The same arrangement as the ELF tables of the radiation report: the room being
+ * worked on is open and every other one folds to its heading, so a survey of six rooms
+ * is not six screens of photographs. Adding a room folds the one before it and opens
+ * the new one, which is the order the surveyor walks the flat in.
+ *
+ * Each card is a `samples` row. The laboratory's scan later fills in its counts,
+ * matched by the media number written here — see `labResultFor`.
+ */
+function RoomsSection({
+  id,
+  report,
+  update,
   setReport,
   onChange,
 }: {
   id: string;
   report: MoldReport;
+  update: (patch: Partial<MoldReport>) => void;
   setReport: (fn: (r: MoldReport) => MoldReport) => void;
   onChange: () => void;
+}) {
+  /** `null` means "the last one", as in the radiation tables — see `ProtocolBlock`. */
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const shown = openIndex ?? report.samples.length - 1;
+
+  const add = (row: MoldSample) => {
+    update({ samples: [...report.samples, row] });
+    setOpenIndex(report.samples.length);
+  };
+
+  const setSample = (index: number, patch: Partial<MoldSample>) =>
+    update({ samples: report.samples.map((s, n) => (n === index ? { ...s, ...patch } : s)) });
+
+  /*
+   * A removed room's photographs stay in the report, unassigned, rather than being
+   * deleted with it: a card removed by mistake should not take the pictures along.
+   */
+  const remove = (index: number) => {
+    update({ samples: report.samples.filter((_, n) => n !== index) });
+    setOpenIndex(null);
+  };
+
+  const unassigned = report.photos.filter(
+    (p) => !report.samples.some((s) => s.photoIds.includes(p.imageId)),
+  );
+
+  let indoorCount = 0;
+
+  return (
+    <div style={{ marginTop: 20 }}>
+      <strong>חדרים ונקודות דיגום</strong>
+      <p className="hint">
+        לכל חדר — שם, מספר מדיה, תמונות{report.moistureSurveyed === 'כן' ? ' וקריאות לחות' : ''}.
+        החדר הפתוח הוא זה שעובדים עליו; הוספת חדר מקפלת את הקודם.
+      </p>
+
+      {report.samples.length === 0 && (
+        <div className="empty" style={{ padding: '16px 12px' }}>
+          עדיין לא נוספו חדרים. הוסיפו את החדר הראשון, ובסוף — דגימה מבחוץ להשוואה.
+        </div>
+      )}
+
+      {report.samples.map((sample, index) => {
+        const outdoor = isOutdoorSample(sample);
+        if (!outdoor) indoorCount++;
+        const open = shown === index;
+        const readings = sample.wallReadings.filter((w) => w.reading.trim() !== '').length;
+        const label = outdoor ? 'חוץ' : `חדר ${indoorCount}`;
+        const summary = [
+          sample.mediaNumber.trim() ? `מדיה ${sample.mediaNumber.trim()}` : 'ללא מספר מדיה',
+          `${sample.photoIds.length} תמונות`,
+          !outdoor && report.moistureSurveyed === 'כן' ? `${readings} קריאות לחות` : '',
+          sample.totalCount.trim() ? `סה״כ ${sample.totalCount.trim()}` : '',
+        ]
+          .filter(Boolean)
+          .join(' · ');
+        const toggle = () => setOpenIndex(open ? -1 : index);
+
+        return (
+          <div className="protocol-block" key={index} style={{ marginTop: 10 }}>
+            <div className="card-head" style={{ background: '#f7f9fb' }}>
+              <button
+                type="button"
+                className="btn-sm"
+                onClick={toggle}
+                title={open ? 'סגירה' : 'פתיחה'}
+                style={{ minWidth: 30 }}
+              >
+                {open ? '▾' : '▸'}
+              </button>
+              <span className="badge">{label}</span>
+              <strong
+                onClick={toggle}
+                style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}
+              >
+                {sample.location.trim() || (outdoor ? 'דגימת חוץ' : 'חדר ללא שם')}
+              </strong>
+              <span className="hint">{summary}</span>
+              <span className="spacer" style={{ display: 'flex', gap: 6 }}>
+                <button
+                  type="button"
+                  className="btn-danger btn-sm"
+                  onClick={() => {
+                    if (confirm(`למחוק את "${sample.location.trim() || label}"? התמונות יישארו בדוח.`)) {
+                      remove(index);
+                    }
+                  }}
+                >
+                  מחיקה
+                </button>
+              </span>
+            </div>
+
+            {open && (
+              <div style={{ padding: 14 }}>
+                <div className="grid">
+                  <div className="field needed" data-filled={sample.location.trim() !== '' ? 'true' : 'false'}>
+                    <label>{outdoor ? 'נקודת הדיגום בחוץ' : 'שם החדר'}</label>
+                    <input
+                      list={outdoor ? undefined : 'mold-room-names'}
+                      value={sample.location}
+                      placeholder={outdoor ? 'חוץ — מרפסת / חצר' : 'סלון, חדר שינה…'}
+                      onChange={(e) => setSample(index, { location: e.target.value })}
+                      onBlur={onChange}
+                    />
+                  </div>
+                  <div className="field needed" data-filled={sample.mediaNumber.trim() !== '' ? 'true' : 'false'}>
+                    <label>מספר מדיה</label>
+                    <input
+                      className="ltr"
+                      value={sample.mediaNumber}
+                      placeholder="12345678"
+                      onChange={(e) => setSample(index, { mediaNumber: e.target.value })}
+                      onBlur={onChange}
+                    />
+                    <span className="hint">המספר שעל ראש הדיגום — לפיו התוצאה בדוח Hayes משויכת לחדר</span>
+                  </div>
+                </div>
+
+                <RoomPhotos id={id} report={report} setReport={setReport} onChange={onChange} room={index} />
+
+                {!outdoor && report.moistureSurveyed === 'כן' && (
+                  <WallReadings
+                    sample={sample}
+                    onChange={(wallReadings) => setSample(index, { wallReadings })}
+                    onBlur={onChange}
+                  />
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      <datalist id="mold-room-names">
+        {LOCATION_OPTIONS.filter((o) => o !== 'חוץ').map((o) => (
+          <option key={o} value={o} />
+        ))}
+      </datalist>
+
+      <div className="protocols-bare-actions" style={{ marginTop: 12 }}>
+        <button type="button" className="btn-primary btn-sm" onClick={() => add(newSampleRow())}>
+          + הוספת חדר
+        </button>
+        <button type="button" className="btn-sm" onClick={() => add(newOutdoorSampleRow())}>
+          + הוספת דגימה מבחוץ
+        </button>
+      </div>
+
+      {unassigned.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <strong>תמונות שלא שויכו לחדר ({unassigned.length})</strong>
+          <RoomPhotos id={id} report={report} setReport={setReport} onChange={onChange} room={null} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A room's wall-moisture readings — one per surface, as a percentage.
+ *
+ * The six surfaces are offered as buttons rather than a menu per row: a room is read
+ * on two or three of them, and one tap per surface is quicker standing beside the
+ * wall than choosing from a list each time. A surface already read is not offered
+ * again.
+ */
+function WallReadings({
+  sample,
+  onChange,
+  onBlur,
+}: {
+  sample: MoldSample;
+  onChange: (readings: WallReading[]) => void;
+  onBlur: () => void;
+}) {
+  const readings = sample.wallReadings;
+  const remaining = MOISTURE_SURFACES.filter((surface) => !readings.some((r) => r.surface === surface));
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      <strong>בדיקת לחות בקירות</strong>
+      <p className="hint">
+        מיקום המדידה בחדר והתוצאה באחוזים, במכשיר {MOISTURE_INSTRUMENT}. מודפס בטבלה 2.1 ובסעיף 6.5.
+      </p>
+
+      {readings.length === 0 && sample.moistureReading.trim() !== '' && (
+        <p className="hint">קריאה שנרשמה קודם: {sample.moistureReading}</p>
+      )}
+
+      {readings.map((reading, n) => (
+        <div key={n} style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
+          <select
+            value={reading.surface}
+            style={{ flex: 1 }}
+            onChange={(e) =>
+              onChange(readings.map((r, m) => (m === n ? { ...r, surface: e.target.value } : r)))
+            }
+          >
+            {!(MOISTURE_SURFACES as readonly string[]).includes(reading.surface) && (
+              <option value={reading.surface}>{reading.surface || 'בחרו משטח…'}</option>
+            )}
+            {MOISTURE_SURFACES.map((surface) => (
+              <option key={surface} value={surface}>
+                {surface}
+              </option>
+            ))}
+          </select>
+          <input
+            className="ltr"
+            inputMode="decimal"
+            style={{ width: 90 }}
+            value={reading.reading.replace(/%$/, '')}
+            placeholder="0.8"
+            onChange={(e) =>
+              onChange(readings.map((r, m) => (m === n ? { ...r, reading: e.target.value } : r)))
+            }
+            onBlur={onBlur}
+          />
+          <span>%</span>
+          <button
+            type="button"
+            className="btn-danger btn-sm"
+            onClick={() => onChange(readings.filter((_, m) => m !== n))}
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+
+      {remaining.length > 0 && (
+        <div className="protocols-bare-actions" style={{ marginTop: 8, flexWrap: 'wrap' }}>
+          {remaining.map((surface) => (
+            <button
+              key={surface}
+              type="button"
+              className="btn-sm"
+              onClick={() => onChange([...readings, { surface, reading: '' }])}
+            >
+              + {surface}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The photographs of one room, or — with `room` null — those tied to no room.
+ *
+ * Every photograph still lives in the report's one `photos` list, so the appendix
+ * numbers them in a single run; the room only records which of them it owns. The
+ * number shown is the one the appendix will print, room by room — see
+ * `photosInRoomOrder`.
+ */
+function RoomPhotos({
+  id,
+  report,
+  setReport,
+  onChange,
+  room,
+}: {
+  id: string;
+  report: MoldReport;
+  setReport: (fn: (r: MoldReport) => MoldReport) => void;
+  onChange: () => void;
+  room: number | null;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState('');
@@ -460,9 +942,6 @@ function PhotoStep({
    * camera app — better than anything this page could draw. A desktop ignores `capture`
    * entirely and would fall back to a file picker, so it gets `getUserMedia` in a prompt
    * instead. Both end at the same upload.
-   *
-   * The button used to be hidden on desktop altogether, which left a laptop that has a
-   * camera with no way to use it — and a mould survey is written on whatever is to hand.
    */
   const [handheld, setHandheld] = useState(false);
   useEffect(() => {
@@ -479,6 +958,23 @@ function PhotoStep({
   // caption while the surveyor is still beside it — not later from a long list.
   const { ask: askCaption, node: captionPromptNode } = useCaptionPrompt();
 
+  const roomName = room === null ? '' : report.samples[room]?.location.trim() ?? '';
+  const owned =
+    room === null
+      ? report.photos.filter((p) => !report.samples.some((s) => s.photoIds.includes(p.imageId)))
+      : report.photos.filter((p) => report.samples[room]?.photoIds.includes(p.imageId));
+  const appendixOrder = photosInRoomOrder(report).map((p) => p.imageId);
+
+  /** Adds a photograph to the report and, when there is one, to this room. */
+  const attach = (r: MoldReport, photo: MoldReport['photos'][number]): MoldReport => ({
+    ...r,
+    photos: [...r.photos, photo],
+    samples:
+      room === null
+        ? r.samples
+        : r.samples.map((s, n) => (n === room ? { ...s, photoIds: [...s.photoIds, photo.imageId] } : s)),
+  });
+
   // Accepts a plain array too, so a single frame from the webcam takes the same path
   // as a gallery selection rather than needing an upload path of its own.
   const upload = (files: FileList | File[] | null) => {
@@ -487,9 +983,7 @@ function PhotoStep({
     startTransition(async () => {
       let prepared: File[];
       try {
-        // A PDF containing photographs becomes one appendix image per page. Keeping
-        // the conversion here means PDF pages and selected photos have identical
-        // captions, previews, deletion and DOCX output from this point onward.
+        // A PDF containing photographs becomes one appendix image per page.
         prepared = await expandPdfPages(Array.from(files));
       } catch (err) {
         setError(err instanceof Error ? err.message : 'לא ניתן לפתוח את קובץ ה-PDF.');
@@ -511,8 +1005,6 @@ function PhotoStep({
         const toSend = await shrinkPhoto(file);
         const form = new FormData();
         form.set('file', toSend);
-        // The report as it stands on screen, so an unsaved edit is not lost by the
-        // server writing back the stored copy.
         form.set('report', JSON.stringify(current));
 
         let result: Awaited<ReturnType<typeof uploadMoldPhoto>>;
@@ -530,29 +1022,31 @@ function PhotoStep({
           setError(result.error ?? 'העלאה נכשלה');
           break;
         }
-        // Asked here, with whatever the server inferred (filename, OCR'd text) as a
-        // starting point. Dismissing keeps the inference, which is how the appendix
-        // used to behave before this prompt existed.
-        const answered = await askCaption(result.photo.caption || '');
-        const photo = { ...result.photo, caption: answered ?? result.photo.caption };
-        current = { ...current, photos: [...current.photos, photo] };
-        setReport((r) => ({ ...r, photos: [...r.photos, photo] }));
+        // The room's name is the starting caption — the appendix otherwise prints a
+        // bare number over a picture nobody can place.
+        const answered = await askCaption(result.photo.caption || roomName);
+        const photo = { ...result.photo, caption: answered ?? (result.photo.caption || roomName) };
+        current = attach(current, photo);
+        setReport((r) => attach(r, photo));
       }
-      // Both are cleared so the same file — or another shot from the camera, which hands
-      // back the same name every time — fires change again.
       if (inputRef.current) inputRef.current.value = '';
       if (cameraRef.current) cameraRef.current.value = '';
+      onChange();
     });
   };
 
   const remove = (imageId: string) =>
     startTransition(async () => {
       await removeMoldPhoto(id, imageId);
-      setReport((r) => ({ ...r, photos: r.photos.filter((p) => p.imageId !== imageId) }));
+      setReport((r) => ({
+        ...r,
+        photos: r.photos.filter((p) => p.imageId !== imageId),
+        samples: r.samples.map((s) => ({ ...s, photoIds: s.photoIds.filter((p) => p !== imageId) })),
+      }));
     });
 
   return (
-    <div>
+    <div style={{ marginTop: 12 }}>
       {error && <div className="notice error">{error}</div>}
 
       {captionPromptNode}
@@ -580,31 +1074,33 @@ function PhotoStep({
         onChange={(e) => upload(e.target.files)}
       />
 
-      <div className="protocols-bare-actions">
-        {/* One button, two implementations — the phone's own camera app where there is
-            one, a webcam prompt otherwise. See `handheld` above. */}
-        {(handheld || webcam) && (
+      {room !== null && (
+        <div className="protocols-bare-actions">
+          {(handheld || webcam) && (
+            <button
+              type="button"
+              className="btn-primary btn-sm"
+              disabled={pending}
+              onClick={() => (handheld ? cameraRef.current?.click() : setCameraOpen(true))}
+            >
+              {pending ? 'מעלה…' : '📷 צילום'}
+            </button>
+          )}
           <button
             type="button"
-            className="btn-primary btn-sm"
+            className="btn-sm"
             disabled={pending}
-            onClick={() => (handheld ? cameraRef.current?.click() : setCameraOpen(true))}
+            onClick={() => inputRef.current?.click()}
           >
-            {pending ? 'מעלה…' : '📷 צילום'}
+            {pending ? 'מעלה…' : 'הוספת תמונות או PDF'}
           </button>
-        )}
-        <button
-          type="button"
-          className="btn-sm"
-          disabled={pending}
-          onClick={() => inputRef.current?.click()}
-        >
-          {pending ? 'מעלה…' : 'הוספת תמונות או PDF'}
-        </button>
-      </div>
+        </div>
+      )}
 
-      {report.photos.length === 0 ? (
-        <div className="empty">אין עדיין תמונות. כל תמונה תודפס בעמוד נפרד וממוספרת אוטומטית.</div>
+      {owned.length === 0 ? (
+        <div className="empty" style={{ padding: '12px' }}>
+          אין עדיין תמונות בחדר הזה. כל תמונה תודפס בנספח בעמוד נפרד וממוספרת אוטומטית.
+        </div>
       ) : (
         <div className="table-scroll">
           <table>
@@ -617,23 +1113,22 @@ function PhotoStep({
               </tr>
             </thead>
             <tbody>
-              {report.photos.map((photo, i) => (
+              {owned.map((photo) => (
                 <tr key={photo.imageId}>
-                  {/* המספר מוצג ולא נערך — הוא נגזר מהסדר, וזה בדיוק מה שמונע
-                      שתי תמונות עם אותו מספר אחרי שינוי סדר. */}
-                  <td className="ltr">תמונה מס׳ {i + 1}</td>
+                  {/* המספר מוצג ולא נערך — הוא נגזר מהסדר בנספח, חדר אחר חדר. */}
+                  <td className="ltr">תמונה מס׳ {appendixOrder.indexOf(photo.imageId) + 1}</td>
                   <td>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={`/api/mold/photos/${photo.imageId}`}
-                      alt={photo.caption || `תמונה ${i + 1}`}
+                      alt={photo.caption || roomName || 'תמונה'}
                       style={{ maxWidth: 120, maxHeight: 90, objectFit: 'cover' }}
                     />
                   </td>
                   <td>
                     <input
                       value={photo.caption}
-                      placeholder="קיר בחדר הילדים"
+                      placeholder={roomName || 'קיר בחדר הילדים'}
                       onChange={(e) => {
                         const caption = e.target.value;
                         setReport((r) => ({
@@ -662,11 +1157,6 @@ function PhotoStep({
           </table>
         </div>
       )}
-
-      <p className="hint">
-        הכיתוב הוא מה שמופיע אחרי ״תמונה מס׳ {report.photos.length || 1} :״. המספור נעשה אוטומטית
-        לפי הסדר כאן, וכל תמונה או עמוד שחולץ מ-PDF מקבלים עמוד משלהם.
-      </p>
     </div>
   );
 }
@@ -886,6 +1376,232 @@ function Area({
 }
 
 /**
+ * The particulars of the visit — who, where, when, and how the sampling was done.
+ *
+ * The first thing on the first step, above the rooms, because they are the same for
+ * every room and are known on site; the laboratory adds nothing to them.
+ */
+function DetailsSection({
+  report,
+  update,
+}: {
+  report: MoldReport;
+  update: (patch: Partial<MoldReport>) => void;
+}) {
+  return (
+    <div>
+      {/*
+        Who commissioned the survey, and where.
+
+        Both print in §1 and both were coming out blank, because the steps that asked
+        for them were removed. They are back as one block rather than a step of their
+        own: picking the customer fills both, which is the whole reason the directory
+        exists.
+
+        The place is the *site*, not the customer's own address — a company's card
+        carries its offices, and the survey was not done there. So it is filled from the
+        card only for a private customer, whose home is the site, and left for the
+        surveyor otherwise. That is the rule the radiation report follows; see
+        `withCustomerDefaults`.
+      */}
+      <div className="grid">
+        <CustomerPicker
+          onPick={(fields) => {
+            const patch: Partial<MoldReport> = {
+              customerId: fields.customerId,
+              customerType: fields.customerType,
+              recipientName: fields.recipientName,
+              companyName: fields.customerType === 'company' ? fields.companyName : '',
+              addressLine: fields.addressLine,
+              city: fields.city,
+              phone: fields.phone,
+              email: fields.email,
+              // The commissioning party is normally the customer, and stays editable:
+              // the מזמין is often a contractor or a managing agent while the report is
+              // about somebody else's building.
+              clientName:
+                fields.customerType === 'company'
+                  ? fields.companyName || fields.recipientName
+                  : fields.recipientName,
+              clientPhone: fields.phone,
+              clientEmail: fields.email,
+            };
+
+            /*
+             * The site address is filled from the card only where the card is the site.
+             *
+             * A private customer's home is what was sampled; a company's registered
+             * address is its offices, and printing those as "כתובת" would name a
+             * building nobody visited. Anything already typed wins either way.
+             */
+            const fromCard = joinAddress(fields.addressLine, fields.city);
+            if (fields.customerType === 'private' && fromCard && !report.siteAddress.trim()) {
+              patch.siteAddress = fromCard;
+            }
+
+            update(patch);
+          }}
+        />
+
+        <Text
+          label="מזמין הבדיקה"
+          value={report.clientName}
+          onChange={(v) => update({ clientName: v })}
+          wide
+          hint="מולא מהלקוח שנבחר — ניתן לשנות. מודפס בסעיף 1."
+        />
+
+        <Text
+          label="כתובת"
+          value={report.siteAddress}
+          onChange={(v) => update({ siteAddress: v })}
+          wide
+          hint="כתובת האתר שנדגם — לא כתובת המשרדים. מודפס בסעיף 1 וקובע את שם הקובץ."
+        />
+
+        <Text
+          label="תאריך הבקשה"
+          value={report.requestDate}
+          onChange={(v) => update({ requestDate: v })}
+          hint="מולא בתאריך פתיחת הדוח — ניתן לשנות"
+        />
+
+        <Text
+          label="מועד הדיגום"
+          value={report.surveyDateTime}
+          onChange={(v) => update({ surveyDateTime: v })}
+          optional
+          placeholder="מולא אוטומטית מדוח המעבדה"
+          hint="יום הביקור בשטח — מתמלא מ״Collected״ בדוח המעבדה; אפשר לתקן."
+        />
+
+        <Text
+          label="תיאור המבנה"
+          value={report.buildingDescription}
+          onChange={(v) => update({ buildingDescription: v })}
+          optional
+          placeholder="דירה בקומה 2 מעל קומת עמודים"
+          hint="שורה אחת על הבניין. מודפס בסעיף 1."
+        />
+
+        <StaffChoice
+          label="מבצע הדיגום"
+          value={report.samplerName}
+          onChange={(v) => update({ samplerName: v })}
+        />
+        <StaffChoice
+          label="עורך הדוח"
+          value={report.authorName}
+          onChange={(v) => update({ authorName: v })}
+          hint="מודפס בעמוד 2, בסעיף 1 — וקובע את החתימה בסוף הדוח"
+        />
+      </div>
+
+      {/*
+        The one thing about the site the laboratory's sheet cannot say.
+        
+        §3 is drafted from the results, and from figures alone it can only name rooms
+        and counts — true, but thin. The Technion report's own §3 says which rooms have
+        a window and which are sealed with an overhead unit, and that is exactly the
+        sort of fact that explains why one room came back high. A model cannot invent
+        it and is told not to guess, so without this the section simply comes out
+        shorter than it should.
+        
+        One field rather than the five steps this replaced: it is the only one of them
+        that changes what the drafting can say.
+      */}
+      <div className="grid">
+        <Area
+          label="תיאור המקום"
+          value={report.siteDescription}
+          onChange={(v) => update({ siteDescription: v })}
+          dictate="moldSiteDescription"
+          hint="באילו חללים בוצעה הבדיקה, ומה מאפיין אותם — חלונות, מיזוג, אוורור. משמש לניסוח סעיף 3."
+        />
+      </div>
+
+      {/*
+        Whether the wall-moisture survey ran at all.
+
+        A separate instrument and a separate walk-through from the air sampling, and
+        plenty of jobs are air alone — so this is asked rather than assumed. Turning it
+        on adds per-surface readings to each indoor room below, a moisture column to the
+        summary table, and the whole "בדיקת לחות בקירות" chapter to the document; turning
+        it off drops all of that rather than printing empty boxes.
+      */}
+      <div className="field wide" data-filled="true" style={{ marginTop: 4 }}>
+        <label>בדיקת לחות בקירות</label>
+        <div className="check-list">
+          {(['כן', 'לא'] as const).map((option) => (
+            <label key={option} className="check-item">
+              <input
+                type="radio"
+                name="moistureSurveyed"
+                checked={report.moistureSurveyed === option}
+                onChange={() => update({ moistureSurveyed: option })}
+              />
+              <span>{option === 'כן' ? 'בוצעה' : 'לא בוצעה'}</span>
+            </label>
+          ))}
+        </div>
+        <span className="hint">
+          {report.moistureSurveyed === 'כן'
+            ? `נמדדה במכשיר ${MOISTURE_INSTRUMENT}, בכל חדר — לפי קיר, רצפה ותקרה.`
+            : 'הדוח יודפס בלי פרק הלחות.'}
+        </span>
+      </div>
+
+      {/*
+        §4 — the four sampling details the laboratory's sheet cannot supply.
+
+        They print "יש להשלים מטופס השטח" until somebody answers them, which is a
+        standing note that the protocol is incomplete — honest, but it reaches the
+        customer looking like an unfinished document. They are asked here instead,
+        as pickers: the answers are the same handful every time, and typing them per
+        report is where the wording drifts.
+
+        Every one keeps an "אחר…" box. A sampling that genuinely happened otherwise
+        has to be able to say so, and a picker that flattened it to the nearest listed
+        answer would be recording something that did not happen.
+      */}
+      <div style={{ marginTop: 16 }}>
+        <strong>פרטי הדיגום (סעיף 4)</strong>
+        <p className="hint">
+          לא מופיעים בגיליון המעבדה. עד שימולאו, הדוח מדפיס ״יש להשלים מטופס השטח״.
+        </p>
+        <div className="grid">
+          <Choice
+            label="גובה נקודת הדיגום"
+            value={report.samplingHeight}
+            options={SAMPLING_HEIGHT_OPTIONS}
+            onChange={(v) => update({ samplingHeight: v })}
+          />
+          <Choice
+            label="מצב מערכת המיזוג"
+            value={report.hvacState}
+            options={HVAC_STATE_OPTIONS}
+            onChange={(v) => update({ hvacState: v })}
+          />
+          <Choice
+            label="מצב חלונות ודלתות"
+            value={report.openingsState}
+            options={OPENINGS_STATE_OPTIONS}
+            onChange={(v) => update({ openingsState: v })}
+          />
+          <Choice
+            label="בדיקת/אימות ספיקה"
+            value={report.flowVerification}
+            options={FLOW_VERIFICATION_OPTIONS}
+            onChange={(v) => update({ flowVerification: v })}
+          />
+        </div>
+      </div>
+
+    </div>
+  );
+}
+
+/**
  * The laboratory results step.
  *
  * This is where the report stops being a survey and becomes a set of findings. The
@@ -1012,86 +1728,26 @@ function LabResultsStep({
         const results = payload.results;
 
         /*
-         * The samples take what the sheet says, wherever the surveyor left a blank.
-         *
-         * This is the transcription being removed: the total and the genera are what
-         * the summary and the comparison are built from, and they are on the sheet.
-         * Anything already typed wins — see `sampleWithLabResult`.
+         * Matched to the rooms, with a room of its own for any block none of them
+         * claims, and the sheet's particulars filling §1 where it is blank — the same
+         * path the e-mail from Hayes takes. See `applyLabScan`.
          */
-        const merged = { ...report, labResults: results };
-        const updated = report.samples.map((sample) =>
-          sampleWithLabResult(sample, labResultFor(merged, sample)),
-        );
-
-        /*
-         * A block the sheet reports and no sample row claims becomes a row of its own.
-         *
-         * The rows used to be typed on site and the scan only filled them in. They are
-         * not typed any more — the survey is written a week later from the laboratory's
-         * PDF, and a report opens with no samples at all — so the sheet is what says
-         * which samples exist. Without this the scan read nine blocks, matched none of
-         * them, and left the summary table and the conclusions with nothing to work
-         * from while showing nine "unmatched" warnings.
-         *
-         * The laboratory's own room name is used, and the outdoor control is recognised
-         * by it: that one sample is what every indoor figure is compared against, so
-         * mis-filing it as indoor would change what the report concludes.
-         */
-        const claimed = new Set(
-          updated.map((sample) => labResultFor(merged, sample)).filter(Boolean),
-        );
-        const added = results
-          .filter((result) => !claimed.has(result))
-          .map((result) => {
-            const name = result.sampleName.trim();
-            const outdoor = isOutdoorLocation(name);
-            return sampleWithLabResult(
-              {
-                ...newSampleRow(),
-                location: name,
-                scope: outdoor ? ('חוץ' as const) : ('פנים' as const),
-              },
-              result,
-            );
-          });
-
-        const samples = [...updated, ...added];
-
-        /*
-         * The sheet's own particulars fill §1, where a blank was printing before.
-         *
-         * Only into fields still empty: a number or a date the surveyor typed is a
-         * decision, and an overwrite would be silent. The same rule the sample rows
-         * follow — see `sampleWithLabResult`.
-         */
-        const details = payload.details;
+        const scanned = applyLabScan(report, results, payload.details);
+        const merged = scanned.report;
         update({
-          labResults: results,
-          samples,
-          ...(details?.labReportNumber && !report.labReportNumber.trim()
-            ? { labReportNumber: details.labReportNumber }
-            : {}),
-          ...(details?.labReceivedDate && !report.labReceivedDate.trim()
-            ? { labReceivedDate: details.labReceivedDate }
-            : {}),
-          ...(details?.labReportedDate && !report.labReportedDate.trim()
-            ? { labReportedDate: details.labReportedDate }
-            : {}),
-          // The sampling date — the sheet's "Collected" date is the day of the visit,
-          // and the report opened days later has no better source for it.
-          ...(details?.labCollectedDate && !report.surveyDateTime.trim()
-            ? { surveyDateTime: details.labCollectedDate }
-            : {}),
+          labResults: merged.labResults,
+          samples: merged.samples,
+          labReportNumber: merged.labReportNumber,
+          labReceivedDate: merged.labReceivedDate,
+          labReportedDate: merged.labReportedDate,
+          surveyDateTime: merged.surveyDateTime,
         });
 
-        // Every block now has a row — matched to one the surveyor had, or given one of
-        // its own just above. What is worth saying is how many arrived and how many
-        // rows were created, not a mismatch that can no longer happen.
-        const stray = unmatchedLabResults({ labResults: results, samples });
+        const stray = scanned.stray;
         setNotice(
           [
             `נקראו ${results.length} בלוקי תוצאות.` +
-              (added.length > 0 ? ` נוצרו ${added.length} דגימות חדשות.` : ''),
+              (scanned.added > 0 ? ` נוצרו ${scanned.added} דגימות חדשות.` : ''),
             stray.length > 0
               ? `${stray.length} תוצאות לא שויכו לאף דגימה (${stray
                   .map((r) => r.labNumber || r.sampleName || 'ללא שם')
@@ -1162,213 +1818,6 @@ function LabResultsStep({
     <div>
       {error && <div className="notice error">{error}</div>}
       {notice && <div className="notice">{notice}</div>}
-
-      {/*
-        Who commissioned the survey, and where.
-
-        Both print in §1 and both were coming out blank, because the steps that asked
-        for them were removed. They are back as one block rather than a step of their
-        own: picking the customer fills both, which is the whole reason the directory
-        exists.
-
-        The place is the *site*, not the customer's own address — a company's card
-        carries its offices, and the survey was not done there. So it is filled from the
-        card only for a private customer, whose home is the site, and left for the
-        surveyor otherwise. That is the rule the radiation report follows; see
-        `withCustomerDefaults`.
-      */}
-      <div className="grid">
-        <CustomerPicker
-          onPick={(fields) => {
-            const patch: Partial<MoldReport> = {
-              customerId: fields.customerId,
-              customerType: fields.customerType,
-              recipientName: fields.recipientName,
-              companyName: fields.customerType === 'company' ? fields.companyName : '',
-              addressLine: fields.addressLine,
-              city: fields.city,
-              phone: fields.phone,
-              email: fields.email,
-              // The commissioning party is normally the customer, and stays editable:
-              // the מזמין is often a contractor or a managing agent while the report is
-              // about somebody else's building.
-              clientName:
-                fields.customerType === 'company'
-                  ? fields.companyName || fields.recipientName
-                  : fields.recipientName,
-              clientPhone: fields.phone,
-              clientEmail: fields.email,
-            };
-
-            /*
-             * The site address is filled from the card only where the card is the site.
-             *
-             * A private customer's home is what was sampled; a company's registered
-             * address is its offices, and printing those as "מיקום" would name a
-             * building nobody visited. Anything already typed wins either way.
-             */
-            const fromCard = joinAddress(fields.addressLine, fields.city);
-            if (fields.customerType === 'private' && fromCard && !report.siteAddress.trim()) {
-              patch.siteAddress = fromCard;
-            }
-
-            update(patch);
-          }}
-        />
-
-        <Text
-          label="מזמין הבדיקה"
-          value={report.clientName}
-          onChange={(v) => update({ clientName: v })}
-          wide
-          hint="מולא מהלקוח שנבחר — ניתן לשנות. מודפס בסעיף 1."
-        />
-
-        <Text
-          label="מיקום"
-          value={report.siteAddress}
-          onChange={(v) => update({ siteAddress: v })}
-          wide
-          hint="כתובת האתר שנדגם — לא כתובת המשרדים. מודפס בסעיף 1 וקובע את שם הקובץ."
-        />
-
-        <Text
-          label="תאריך הבקשה"
-          value={report.requestDate}
-          onChange={(v) => update({ requestDate: v })}
-          hint="מולא בתאריך פתיחת הדוח — ניתן לשנות"
-        />
-
-        <Text
-          label="מועד הדיגום"
-          value={report.surveyDateTime}
-          onChange={(v) => update({ surveyDateTime: v })}
-          optional
-          placeholder="מולא אוטומטית מדוח המעבדה"
-          hint="יום הביקור בשטח — מתמלא מ״Collected״ בדוח המעבדה; אפשר לתקן."
-        />
-
-        <Text
-          label="תיאור המבנה"
-          value={report.buildingDescription}
-          onChange={(v) => update({ buildingDescription: v })}
-          optional
-          placeholder="דירה בקומה 2 מעל קומת עמודים"
-          hint="שורה אחת על הבניין. מודפס בסעיף 1."
-        />
-
-        <StaffChoice
-          label="מבצע הדיגום"
-          value={report.samplerName}
-          onChange={(v) => update({ samplerName: v })}
-        />
-        <StaffChoice
-          label="עורך הדוח"
-          value={report.authorName}
-          onChange={(v) => update({ authorName: v })}
-          hint="מודפס בעמוד 2, בסעיף 1 — וקובע את החתימה בסוף הדוח"
-        />
-      </div>
-
-      {/*
-        The one thing about the site the laboratory's sheet cannot say.
-        
-        §3 is drafted from the results, and from figures alone it can only name rooms
-        and counts — true, but thin. The Technion report's own §3 says which rooms have
-        a window and which are sealed with an overhead unit, and that is exactly the
-        sort of fact that explains why one room came back high. A model cannot invent
-        it and is told not to guess, so without this the section simply comes out
-        shorter than it should.
-        
-        One field rather than the five steps this replaced: it is the only one of them
-        that changes what the drafting can say.
-      */}
-      <div className="grid">
-        <Area
-          label="תיאור המקום"
-          value={report.siteDescription}
-          onChange={(v) => update({ siteDescription: v })}
-          dictate="moldSiteDescription"
-          hint="באילו חללים בוצעה הבדיקה, ומה מאפיין אותם — חלונות, מיזוג, אוורור. משמש לניסוח סעיף 3."
-        />
-      </div>
-
-      {/*
-        Whether the wall-moisture survey ran at all.
-
-        A separate instrument and a separate walk-through from the air sampling, and
-        plenty of jobs are air alone — so this is asked rather than assumed. Turning it
-        on adds a reading box beside each indoor sample above, a moisture column to the
-        summary table, and the whole "בדיקת לחות בקירות" chapter to the document; turning
-        it off drops all of that rather than printing empty boxes.
-      */}
-      <div className="field wide" data-filled="true" style={{ marginTop: 4 }}>
-        <label>בדיקת לחות בקירות</label>
-        <div className="check-list">
-          {(['כן', 'לא'] as const).map((option) => (
-            <label key={option} className="check-item">
-              <input
-                type="radio"
-                name="moistureSurveyed"
-                checked={report.moistureSurveyed === option}
-                onChange={() => update({ moistureSurveyed: option })}
-              />
-              <span>{option === 'כן' ? 'בוצעה' : 'לא בוצעה'}</span>
-            </label>
-          ))}
-        </div>
-        <span className="hint">
-          {report.moistureSurveyed === 'כן'
-            ? `נמדדה במכשיר ${MOISTURE_INSTRUMENT}, ליד כל דגימת אוויר פנימית.`
-            : 'הדוח יודפס בלי פרק הלחות.'}
-        </span>
-      </div>
-
-      {/*
-        §4 — the four sampling details the laboratory's sheet cannot supply.
-
-        They print "יש להשלים מטופס השטח" until somebody answers them, which is a
-        standing note that the protocol is incomplete — honest, but it reaches the
-        customer looking like an unfinished document. They are asked here instead,
-        as pickers: the answers are the same handful every time, and typing them per
-        report is where the wording drifts.
-
-        Every one keeps an "אחר…" box. A sampling that genuinely happened otherwise
-        has to be able to say so, and a picker that flattened it to the nearest listed
-        answer would be recording something that did not happen.
-      */}
-      <div style={{ marginTop: 16 }}>
-        <strong>פרטי הדיגום (סעיף 4)</strong>
-        <p className="hint">
-          לא מופיעים בגיליון המעבדה. עד שימולאו, הדוח מדפיס ״יש להשלים מטופס השטח״.
-        </p>
-        <div className="grid">
-          <Choice
-            label="גובה נקודת הדיגום"
-            value={report.samplingHeight}
-            options={SAMPLING_HEIGHT_OPTIONS}
-            onChange={(v) => update({ samplingHeight: v })}
-          />
-          <Choice
-            label="מצב מערכת המיזוג"
-            value={report.hvacState}
-            options={HVAC_STATE_OPTIONS}
-            onChange={(v) => update({ hvacState: v })}
-          />
-          <Choice
-            label="מצב חלונות ודלתות"
-            value={report.openingsState}
-            options={OPENINGS_STATE_OPTIONS}
-            onChange={(v) => update({ openingsState: v })}
-          />
-          <Choice
-            label="בדיקת/אימות ספיקה"
-            value={report.flowVerification}
-            options={FLOW_VERIFICATION_OPTIONS}
-            onChange={(v) => update({ flowVerification: v })}
-          />
-        </div>
-      </div>
 
       {cameraOpen && (
         <CameraCapture
@@ -1535,49 +1984,6 @@ function LabResultsStep({
 }
 
 /**
- * The wall-moisture reading beside one indoor sample.
- *
- * Lives inside the lab-result card rather than a step of its own: the surveyor is
- * already looking at this room's numbers, and the reading was taken standing right
- * next to where the pump sat. Nothing prints for the outdoor sample — there is no
- * wall to read at an outdoor control point — and nothing prints for a sample the
- * scan has not matched yet, which is why the lookup can come back empty here.
- */
-function MoistureField({
-  report,
-  update,
-  result,
-  onBlur,
-}: {
-  report: MoldReport;
-  update: (patch: Partial<MoldReport>) => void;
-  result: LabResult;
-  onBlur: () => void;
-}) {
-  const sample = report.samples.find((s) => labResultFor(report, s) === result);
-  if (!sample || isOutdoorSample(sample)) return null;
-
-  return (
-    <div className="field" data-filled={sample.moistureReading.trim() !== '' ? 'true' : 'false'}>
-      <label>קריאת לחות בקיר</label>
-      <input
-        className="ltr"
-        value={sample.moistureReading}
-        placeholder="0.1%"
-        onChange={(e) => {
-          const moistureReading = e.target.value;
-          update({
-            samples: report.samples.map((s) => (s === sample ? { ...s, moistureReading } : s)),
-          });
-        }}
-        onBlur={onBlur}
-      />
-      <span className="hint">קריאת המכשיר ליד נקודת הדיגום — מודפס בסעיף 4.1, 2.1 ובסעיף 6</span>
-    </div>
-  );
-}
-
-/**
  * What was read, laid out for checking against the sheet.
  *
  * Editable, because a transcription is a reading and readings can be wrong — the
@@ -1672,9 +2078,6 @@ function LabResultsReview({
                     onChange={(v) => setResult(i, { fragments: v })}
                     optional
                   />
-                  {report.moistureSurveyed === 'כן' && (
-                    <MoistureField report={report} update={update} result={result} onBlur={onChange} />
-                  )}
                 </div>
 
                 <div className="table-scroll" style={{ marginTop: 12 }}>

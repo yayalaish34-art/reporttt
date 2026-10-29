@@ -33,8 +33,11 @@ import {
   unmatchedLabResults,
   hasWaterDamageMarkers,
   indoorAirSamples,
+  moistureText,
+  newOutdoorSampleRow,
   newSampleRow,
   outdoorAirSample,
+  photosInRoomOrder,
   realSamples,
   surfaceSamples,
   toCount,
@@ -745,7 +748,12 @@ if (!existsSync(TEMPLATE)) {
   const mergedText = textOf(new PizZip(merged).file('word/document.xml')!.asText());
 
   check(photosXml !== '<w:p/>', 'buildPhotosXml בונה XML אמיתי כשיש תמונה');
-  check(mergedText.includes('נספח ב׳ – תמונות מהסקר'), 'כותרת הנספח מודפסת');
+  check(mergedText.includes('נספח א׳ – תמונות מהסקר'), 'כותרת הנספח מודפסת');
+  check(
+    mergedText.indexOf('נספח א׳ – תמונות מהסקר') < mergedText.indexOf('נספח ב׳ – דוח המעבדה של Hayes'),
+    'נספח התמונות לפני דוח Hayes — דוח המעבדה בסוף',
+  );
+  check(mergedText.includes('כתובת') && !/מיקום\s*\{?siteAddress/.test(mergedText), 'סעיף 1 — ״כתובת״ במקום ״מיקום״');
   check(mergedText.includes('סימני רטיבות בחדר'), 'הכיתוב של התמונה מודפס');
   check(!mergedText.includes('{@photosXml}'), 'התג הוחלף בפועל ולא נשאר כטקסט');
 
@@ -753,6 +761,54 @@ if (!existsSync(TEMPLATE)) {
   // with no lab sheets), just with nothing under the heading.
   const emptyPhotos = buildPhotosXml(new PizZip(bytes), []);
   check(emptyPhotos === '<w:p/>', 'בלי תמונות — buildPhotosXml מחזיר פסקה ריקה בלבד');
+}
+
+console.log('\nחדרים — מספר מדיה, קירות ותמונות:');
+{
+  const room = {
+    ...newSampleRow(),
+    location: 'חדר שינה',
+    mediaNumber: '21734455',
+    wallReadings: [
+      { surface: 'קיר מזרחי', reading: '0.8' },
+      { surface: 'רצפה', reading: '1.3%' },
+      { surface: 'תקרה', reading: '' },
+    ],
+    photoIds: ['b', 'a'],
+  };
+  check(moistureText(room) === 'קיר מזרחי 0.8%, רצפה 1.3%', `קריאות לחות לפי משטח — ${moistureText(room)}`);
+  check(
+    moistureText({ ...newSampleRow(), moistureReading: '2.1%' }) === '2.1%',
+    'קריאה בודדת מדוח ישן עדיין מודפסת',
+  );
+
+  const emptyLab = () => ({
+    labNumber: '', sampleName: '', volume: '', reportingLimit: '', background: '', fragments: '',
+    organisms: [], totalRaw: '', totalPerCubicMetre: '', totalPercent: '',
+  });
+  const results = [
+    { ...emptyLab(), labNumber: '900-1', sampleName: '21734455' },
+    { ...emptyLab(), labNumber: '900-2', sampleName: 'A217344559' },
+  ];
+  check(labResultFor({ labResults: results }, room)?.labNumber === '900-1', 'התוצאה משויכת לחדר לפי מספר המדיה');
+  check(
+    labResultFor({ labResults: [results[1]] }, { ...room, location: '' }) === null,
+    'מספר מדיה אינו משויך לחלק ממספר אחר',
+  );
+
+  const outdoor = newOutdoorSampleRow();
+  check(outdoorAirSample({ samples: [room, outdoor] }) === outdoor, 'דגימת חוץ חדשה מזוהה כביקורת');
+
+  const ordered = photosInRoomOrder({
+    samples: [room],
+    photos: [
+      { imageId: 'loose', caption: 'כללי' },
+      { imageId: 'a', caption: '' },
+      { imageId: 'b', caption: 'כתם' },
+    ],
+  });
+  check(ordered.map((p) => p.imageId).join(',') === 'b,a,loose', 'הנספח מסודר חדר אחר חדר');
+  check(ordered[1].caption === 'חדר שינה', 'תמונה בלי כיתוב מקבלת את שם החדר');
 }
 
 console.log(failures === 0 ? '\nהכול עבר\n' : `\n${failures} בדיקות נכשלו\n`);

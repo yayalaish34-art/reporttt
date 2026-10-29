@@ -163,6 +163,19 @@ function migrate(handle: DatabaseSync): void {
     );
 
     /**
+     * Laboratory e-mails from Hayes already turned into a report, by message id.
+     *
+     * The CRM polls every mailbox with an overlapping window, and the same e-mail
+     * reaches several mailboxes — so the same PDF arrives here many times. One row per
+     * e-mail is what makes the second arrival a no-op instead of a second report.
+     */
+    CREATE TABLE IF NOT EXISTS mold_intake (
+      message_id   TEXT PRIMARY KEY,
+      report_id    TEXT NOT NULL,
+      created_at   TEXT NOT NULL
+    );
+
+    /**
      * Indoor-air-quality reports — the fifth department.
      *
      * Same five-column shape as the other four — one row per report, data as JSON.

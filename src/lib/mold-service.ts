@@ -7,7 +7,7 @@ import { buildPhotosXml, type PhotoInput } from './docx/photos';
 import { textOf } from './docx/ooxml';
 import { buildMoldMergeData, moldFileName, moldSubject } from './mold-mapper';
 import { draftMoldReport } from './mold-draft';
-import { realSamples } from './mold-rules';
+import { photosInRoomOrder, realSamples } from './mold-rules';
 import { storedReportTitle } from './report-title';
 import { nextPersonalReference } from './crm-filing';
 import {
@@ -272,7 +272,7 @@ export async function generateMoldReport(
    * handing bytes straight to `mergeDocx`.
    */
   const zip = new PizZip(template);
-  const photos = reportId ? loadPhotoInputs(reportId, report.photos) : [];
+  const photos = reportId ? loadPhotoInputs(reportId, photosInRoomOrder(report)) : [];
   const photosXml = buildPhotosXml(zip, photos);
   /*
    * The laboratory's sheets are a second appendix, built the same way.

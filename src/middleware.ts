@@ -19,6 +19,10 @@ export function middleware(request: NextRequest) {
   // Lets a load balancer check the app is alive without holding the password.
   if (request.nextUrl.pathname === '/api/health') return NextResponse.next();
 
+  // The CRM delivering a Hayes e-mail is a machine with a bearer token, not a person
+  // with the password — the route checks that token itself (`CRM_API_TOKEN`).
+  if (request.nextUrl.pathname === '/api/mold/intake') return NextResponse.next();
+
   const header = request.headers.get('authorization');
   if (header?.startsWith('Basic ')) {
     // `atob` rather than Buffer: middleware runs on the Edge runtime.

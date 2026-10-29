@@ -41,6 +41,29 @@ export const SAMPLE_KINDS = ['אוויר', 'משטח'] as const;
 export const SAMPLE_SCOPES = ['פנים', 'חוץ'] as const;
 
 /**
+ * The six surfaces of a room a wall-moisture reading can be taken on.
+ *
+ * Compass walls rather than "right"/"left": a reader of the report was not standing
+ * where the surveyor stood, and "קיר ימני" names nothing once the page is printed.
+ */
+export const MOISTURE_SURFACES = [
+  'קיר צפוני',
+  'קיר דרומי',
+  'קיר מזרחי',
+  'קיר מערבי',
+  'רצפה',
+  'תקרה',
+] as const;
+
+/** One wall-moisture reading in a room: which surface, and the meter's percentage. */
+export const WallReadingSchema = z.object({
+  /** One of `MOISTURE_SURFACES`. */
+  surface: text.default(''),
+  /** As the meter shows it — "0.8" or "0.8%"; the "%" is added when printed. */
+  reading: text.default(''),
+});
+
+/**
  * Where a sample was taken and what the laboratory found in it.
  *
  * One row per sample, air and surface alike, because the laboratory reports each
@@ -90,6 +113,60 @@ export const MoldSampleSchema = z.object({
    * sample never carries one — there is no wall to read at an outdoor control point.
    */
   moistureReading: text.default(''),
+  /**
+   * The media (cassette) number written on the sampling head in the field.
+   *
+   * It is what the surveyor writes on the chain-of-custody form, so Hayes often prints
+   * it back as the sample's name — which is how a room typed on site is matched to its
+   * laboratory block a week later. See `labResultFor`.
+   */
+  mediaNumber: text.default(''),
+  /**
+   * The wall-moisture readings taken in this room, one per surface.
+   *
+   * Supersedes `moistureReading` once any is filled in; that single string stays for
+   * reports written before rooms carried their own readings. See `moistureText`.
+   */
+  wallReadings: z.array(WallReadingSchema).default([]),
+  /**
+   * The photographs taken in this room — ids into the report's `photos`.
+   *
+   * The photographs themselves stay in one list, so the appendix and its numbering are
+   * unchanged; this only says which room each belongs to, which orders the appendix by
+   * room and captions an uncaptioned photo with the room's name.
+   */
+  photoIds: z.array(text).default([]),
+
+  // ── The row this sample gets on Hayes' Chain of Custody ───────────
+  /** "Sample" — the name the laboratory will print back, in English. */
+  sampleNameEn: text.default(''),
+  /** "Analysis" — one of `COC_ANALYSIS_CODES`; spore trap is what every job sends. */
+  analysis: text.default('S'),
+  /** "Volume" — as written on the form, "150 Lit.". */
+  volume: text.default('150 Lit.'),
+  /** "Notes" — the row's own note to the laboratory. */
+  cocNote: text.default(''),
+});
+
+/** The analysis codes Hayes' Chain of Custody lists, in its own order. */
+export const COC_ANALYSIS_CODES = ['S', 'S+', 'D', 'D+', 'C1', 'C2', 'C3', 'C5', 'TPA'] as const;
+
+/**
+ * The header of Hayes' Chain of Custody form (Form #20).
+ *
+ * Every field may stay empty: the form is produced from what the report already knows
+ * — the sampler, the date, the rooms — and these only override it. See
+ * `chainOfCustody` in `mold-coc.ts` for what each one falls back to.
+ */
+export const ChainOfCustodySchema = z.object({
+  jobNumber: text.default(''),
+  jobName: text.default(''),
+  collector: text.default(''),
+  mobile: text.default(''),
+  email: text.default(''),
+  /** ISO date, "2023-02-13" — printed "February 13, 2023". Empty means today. */
+  dateCollected: text.default(''),
+  note: text.default(''),
 });
 
 /**
@@ -458,6 +535,9 @@ export const MoldReportSchema = z.object({
    */
   labResults: z.array(LabResultSchema).default([]),
 
+  /** The Chain of Custody sent to Hayes with the samples — see `ChainOfCustodySchema`. */
+  coc: ChainOfCustodySchema.default({}),
+
   /**
    * The photographed laboratory sheets, printed as an appendix.
    *
@@ -594,6 +674,8 @@ export function parseIssuableMoldReport(data: unknown) {
 export type LabOrganismRow = z.infer<typeof LabOrganismRowSchema>;
 export type LabResult = z.infer<typeof LabResultSchema>;
 export type MoldSample = z.infer<typeof MoldSampleSchema>;
+export type WallReading = z.infer<typeof WallReadingSchema>;
+export type ChainOfCustody = z.infer<typeof ChainOfCustodySchema>;
 export type MoistureReading = z.infer<typeof MoistureReadingSchema>;
 export type MoldReport = z.infer<typeof MoldReportSchema>;
 /** A mould report as it exists mid-writing — what the autosave stores between steps. */

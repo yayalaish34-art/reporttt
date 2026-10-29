@@ -40,7 +40,7 @@ const BASE_ARGS = [
   "--font-render-hinting=none",
 ];
 
-async function findBrowser(): Promise<BrowserTarget | null> {
+export async function findBrowser(): Promise<BrowserTarget | null> {
   // 1. Explicit override — always wins.
   if (process.env.CHROMIUM_PATH) {
     return { executablePath: process.env.CHROMIUM_PATH, args: BASE_ARGS };
