@@ -284,6 +284,22 @@ export const HVAC_STATE_OPTIONS = [
   'אין מערכת מיזוג בחלל',
 ] as const;
 
+/**
+ * What kind of building was surveyed — printed in §1 as "תיאור המבנה".
+ *
+ * A list rather than a sentence typed per report: it is one of a handful of answers on
+ * every job, and the "אחר…" box stays for the building that is none of them.
+ */
+export const BUILDING_TYPE_OPTIONS = [
+  'מבנה מגורים',
+  'מקום עבודה',
+  'משרדים',
+  'מוסד חינוכי',
+  'מבנה ציבור',
+  'מסחר',
+  'תעשייה / מחסן',
+] as const;
+
 /** Whether the space was closed while it was sampled. */
 export const OPENINGS_STATE_OPTIONS = [
   'חלונות ודלתות סגורים',

@@ -86,6 +86,23 @@ export function todayIso(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' }).format(new Date());
 }
 
+/** "13.02.2023" (or with slashes) → "2023-02-13"; '' when it is not such a date. */
+export function isoFromNumeric(value: string): string {
+  const m = value.trim().match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})/);
+  return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : '';
+}
+
+/** "2023-02-13" → "13.02.2023", the way the report prints a date. */
+export function numericFromIso(iso: string): string {
+  const m = iso.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : '';
+}
+
+/** Today as the report prints it — "13.02.2023". */
+export function todayNumeric(): string {
+  return numericFromIso(todayIso());
+}
+
 export interface CocRow {
   /** The row's position on the form, 1-based. */
   index: number;
@@ -129,7 +146,8 @@ export function chainOfCustody(report: MoldReport): ChainOfCustodyForm {
   const coc = report.coc;
   const staff = STAFF_EN[report.samplerName.trim()];
   const other = Object.entries(STAFF_EN).find(([name]) => name !== report.samplerName.trim())?.[1];
-  const date = coc.dateCollected.trim() || todayIso();
+  // The form's date is the sampling date, unless the form says otherwise.
+  const date = coc.dateCollected.trim() || isoFromNumeric(report.surveyDateTime) || todayIso();
   const collector = coc.collector.trim() || staff?.name || report.samplerName.trim();
 
   return {

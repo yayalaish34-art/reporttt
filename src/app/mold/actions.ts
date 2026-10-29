@@ -24,6 +24,7 @@ import { draftMoldReport } from '@/lib/mold-draft';
 import { realSamples } from '@/lib/mold-rules';
 import { acceptPhoto } from '@/lib/photo-intake';
 import { keepStoredPhotos } from '@/lib/keep-photos';
+import { prepareChainOfCustody } from '@/lib/mold-coc-prepare';
 
 export interface MoldActionResult {
   ok: boolean;
@@ -70,24 +71,18 @@ function blankMoldReport(): MoldReport {
    * `requestDate` — when the report was opened — genuinely is today, so it is taken
    * rather than asked for.
    *
-   * `surveyDateTime` — the sampling date — used to default to today as well, on the
-   * reasoning that the surveyor opens the report on the day of the visit. For mould
-   * that reasoning does not hold: the findings arrive from the laboratory in the
-   * United States about a week after the visit, and by the time anyone opens this
-   * screen the sampling date is already in the past. A report written up on the 15th
-   * for a survey taken on the 3rd printed "15.09.2026" as the sampling date, silently
-   * wrong in both §1 and the cover.
-   *
-   * So it starts empty and is filled from the laboratory sheet instead — the "Collected"
-   * date printed on every Hayes report — the same "only into an empty field" rule every
-   * other scanned particular follows. It is also its own field in the editor, for the
-   * survey the sheet does not carry that date on, or carries it wrong.
+   * `surveyDateTime` — the sampling date — is today as well. The report is now opened
+   * on site, on the day of the visit: the rooms, photos and the Hayes Chain of Custody
+   * are filled in there, before the samples are sent. (It used to start empty and wait
+   * for the laboratory's "Collected" date a week later; that still fills it only if
+   * somebody clears it.)
    */
   const today = numericDate();
   const base = DraftMoldReportSchema.parse({
     referenceNumber: nextMoldReference(),
     reportDate: hebrewDate(),
     requestDate: today,
+    surveyDateTime: today,
   });
   /*
    * No sample rows are seeded.
@@ -455,4 +450,30 @@ export async function draftMoldSections(data: unknown): Promise<MoldDraftResult>
   }
 
   return { ok: true, draft };
+}
+
+export interface MoldCocResult extends MoldActionResult {
+  /** The report as the form was printed from it — numbered and translated. */
+  report?: MoldReport;
+}
+
+/**
+ * Readies the Hayes Chain of Custody: a job number from the shared sequence (from
+ * 817), English for anything typed in Hebrew, the sample numbers on the rooms — then
+ * stores it, so the PDF route prints exactly this. See `prepareChainOfCustody`.
+ */
+export async function prepareMoldChainOfCustody(id: string, data: unknown): Promise<MoldCocResult> {
+  const parsed = DraftMoldReportSchema.safeParse(data);
+  if (!parsed.success) return { ok: false, error: 'הדוח אינו תקין' };
+
+  try {
+    const report = await prepareChainOfCustody(parsed.data as MoldReport);
+    saveMoldReport(id, {
+      ...report,
+      photos: keepStoredPhotos('mold_photos', id, report.photos, report.labSheets),
+    });
+    return { ok: true, report };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'הכנת הטופס נכשלה' };
+  }
 }

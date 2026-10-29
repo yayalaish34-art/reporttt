@@ -7,6 +7,7 @@ import type { DictationField } from '@/lib/transcribe';
 import {
   finishMoldReport,
   persistMoldReportDraft,
+  prepareMoldChainOfCustody,
   removeMoldLabSheet,
   draftMoldSections,
   removeMoldPhoto,
@@ -15,6 +16,7 @@ import {
 } from '../actions';
 import type { LabResult, MoldReport, MoldSample, WallReading } from '@/lib/mold-schema';
 import {
+  BUILDING_TYPE_OPTIONS,
   FLOW_VERIFICATION_OPTIONS,
   HVAC_STATE_OPTIONS,
   COC_ANALYSIS_CODES,
@@ -38,7 +40,14 @@ import {
   photosInRoomOrder,
   realSamples,
 } from '@/lib/mold-rules';
-import { chainOfCustody, cocSamples, englishRoomName, withCocNumbers } from '@/lib/mold-coc';
+import {
+  chainOfCustody,
+  cocSamples,
+  englishRoomName,
+  isoFromNumeric,
+  numericFromIso,
+  todayNumeric,
+} from '@/lib/mold-coc';
 import { shrinkPhoto } from '@/lib/shrink-photo';
 import { CameraCapture, useCameraSupported } from '../../camera-capture';
 import { useCaptionPrompt } from '../../caption-prompt';
@@ -74,6 +83,13 @@ export function MoldEditor({ id, initial }: { id: string; initial: MoldReport })
   const [issues, setIssues] = useState<string[]>([]);
 
   const update = (patch: Partial<MoldReport>) => setReport((r) => ({ ...r, ...patch }));
+
+  // The sampling date is today unless it was already set — a report opened before the
+  // field defaulted gets it on first open.
+  useEffect(() => {
+    if (!initial.surveyDateTime.trim()) update({ surveyDateTime: todayNumeric() });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /**
    * Stores the report as it is written, so nothing depends on reaching the last step.
@@ -138,7 +154,7 @@ export function MoldEditor({ id, initial }: { id: string; initial: MoldReport })
         steps={[
           {
             title: 'חדרים ותמונות',
-            hint: 'פרטי הבדיקה, החדרים — ומהם טופס Hayes (Chain of Custody) ב-PDF',
+            hint: 'פרטי הבדיקה, ולכל חדר — מספר מדיה, תמונות וקריאות לחות',
             content: (
               <>
                 <DetailsSection report={report} update={update} />
@@ -149,21 +165,23 @@ export function MoldEditor({ id, initial }: { id: string; initial: MoldReport })
                   setReport={setReport}
                   onChange={autosave.saveNow}
                 />
-                <ChainOfCustodySection id={id} report={report} update={update} setReport={setReport} />
               </>
             ),
           },
           {
             title: 'דוח מעבדה Hayes',
-            hint: 'צירוף דוח הייס — נקרא אוטומטית לטבלאות ומצורף כנספח בסוף הדוח',
+            hint: 'טופס Chain of Custody לשליחה, ואחר כך דוח התוצאות — נקרא לטבלאות ומצורף כנספח',
             content: (
-              <LabResultsStep
-                id={id}
-                report={report}
-                update={update}
-                setReport={setReport}
-                onChange={autosave.saveNow}
-              />
+              <>
+                <ChainOfCustodySection id={id} report={report} update={update} setReport={setReport} />
+                <LabResultsStep
+                  id={id}
+                  report={report}
+                  update={update}
+                  setReport={setReport}
+                  onChange={autosave.saveNow}
+                />
+              </>
             ),
           },
           {
@@ -481,20 +499,22 @@ function ChainOfCustodySection({
     update({ samples: report.samples.map((s) => (s === sample ? { ...s, ...patch } : s)) });
 
   /*
-   * Saved before it is produced, with the numbers the form prints written into the
-   * rooms: the PDF is rendered from the stored report, and a room printed as "511-3"
-   * has to be findable under that number when the results come back.
+   * Prepared and stored on the server before it is produced — the job number from the
+   * shared sequence, English for anything in Hebrew ("בית מלון" → "Hotel"), and the
+   * numbers the form prints written into the rooms, so a room printed as "817-3" is
+   * findable under that number when the results come back. The editor then shows
+   * exactly what the PDF printed.
    */
   const produce = () =>
     startProducing(async () => {
       setError('');
-      const next = withCocNumbers(report);
-      setReport(() => next);
-      const saved = await persistMoldReportDraft(id, next);
-      if (!saved.ok) {
-        setError(saved.error ?? 'השמירה נכשלה');
+      const prepared = await prepareMoldChainOfCustody(id, report);
+      if (!prepared.ok || !prepared.report) {
+        setError(prepared.error ?? 'הכנת הטופס נכשלה');
         return;
       }
+      const next = prepared.report;
+      setReport(() => next);
       try {
         await downloadDocument(`/api/mold/${id}/coc`, 'Chain of Custody Hayes.pdf');
       } catch (err) {
@@ -514,7 +534,8 @@ function ChainOfCustodySection({
     <div style={{ marginTop: 24 }}>
       <strong>טבלת Hayes — Chain of Custody</strong>
       <p className="hint">
-        הטופס שנשלח עם הדגימות למעבדה. שורה לכל חדר מלמעלה; שדה שנשאר ריק מודפס עם מה שמופיע בו באפור.
+        הטופס שנשלח עם הדגימות למעבדה. שורה לכל חדר משלב החדרים; שדה שנשאר ריק מודפס עם מה שמופיע
+        בו באפור. מה שכתוב בעברית מתורגם לאנגלית בהפקה (״בית מלון״ → Hotel).
       </p>
 
       <div className="grid">
@@ -523,10 +544,12 @@ function ChainOfCustodySection({
           <input
             className="ltr"
             value={coc.jobNumber}
-            placeholder="511"
+            placeholder="אוטומטי"
             onChange={(e) => setCoc({ jobNumber: e.target.value })}
           />
-          <span className="hint">מספרי הדגימות נגזרים ממנו — 511-1, 511-2…</span>
+          <span className="hint">
+            ריק — יוקצה בהפקה, ברצף החל מ-817. מספרי הדגימות נגזרים ממנו — 817-1, 817-2…
+          </span>
         </div>
         <div className="field">
           <label>Date Collected</label>
@@ -554,7 +577,7 @@ function ChainOfCustodySection({
 
       {rows.length === 0 ? (
         <div className="empty" style={{ padding: '12px' }}>
-          הוסיפו חדרים למעלה — כל חדר הוא שורה בטופס.
+          הוסיפו חדרים בשלב הקודם — כל חדר הוא שורה בטופס.
         </div>
       ) : (
         <div className="table-scroll" style={{ marginTop: 12 }}>
@@ -1466,22 +1489,22 @@ function DetailsSection({
           hint="מולא בתאריך פתיחת הדוח — ניתן לשנות"
         />
 
-        <Text
-          label="מועד הדיגום"
-          value={report.surveyDateTime}
-          onChange={(v) => update({ surveyDateTime: v })}
-          optional
-          placeholder="מולא אוטומטית מדוח המעבדה"
-          hint="יום הביקור בשטח — מתמלא מ״Collected״ בדוח המעבדה; אפשר לתקן."
-        />
+        {/* A date, filled with today: the report is opened on the day of the visit. */}
+        <div className="field">
+          <label>מועד הדיגום</label>
+          <input
+            type="date"
+            className="ltr"
+            value={isoFromNumeric(report.surveyDateTime)}
+            onChange={(e) => update({ surveyDateTime: numericFromIso(e.target.value) })}
+          />
+        </div>
 
-        <Text
+        <Choice
           label="תיאור המבנה"
           value={report.buildingDescription}
+          options={BUILDING_TYPE_OPTIONS}
           onChange={(v) => update({ buildingDescription: v })}
-          optional
-          placeholder="דירה בקומה 2 מעל קומת עמודים"
-          hint="שורה אחת על הבניין. מודפס בסעיף 1."
         />
 
         <StaffChoice
