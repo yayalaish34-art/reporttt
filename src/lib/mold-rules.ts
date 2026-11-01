@@ -388,7 +388,9 @@ export function labResultFor(
       (r) =>
         r.sampleName.replace(/\s+/g, '').toLowerCase() === media ||
         tokens(r.sampleName).includes(media) ||
-        r.labNumber.trim().toLowerCase() === media,
+        r.labNumber.trim().toLowerCase() === media ||
+        // "817-20546" — the job number in front of the media number, as the form prints it.
+        r.labNumber.replace(/\s+/g, '').toLowerCase().endsWith(`-${media}`),
     );
     if (byMedia) return byMedia;
   }

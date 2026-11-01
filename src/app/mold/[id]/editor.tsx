@@ -548,7 +548,8 @@ function ChainOfCustodySection({
             onChange={(e) => setCoc({ jobNumber: e.target.value })}
           />
           <span className="hint">
-            ריק — יוקצה בהפקה, ברצף החל מ-817. מספרי הדגימות נגזרים ממנו — 817-1, 817-2…
+            ריק — יוקצה בהפקה, ברצף החל מ-817. מספר כל דגימה בטופס: Job Number-מספר מדיה, למשל
+            817-20546.
           </span>
         </div>
         <div className="field">
@@ -585,6 +586,7 @@ function ChainOfCustodySection({
             <thead>
               <tr>
                 <th>#</th>
+                <th>מספר מדיה</th>
                 <th>Number</th>
                 <th>Sample</th>
                 <th>Analysis</th>
@@ -600,10 +602,12 @@ function ChainOfCustodySection({
                     <input
                       className="ltr"
                       value={sample.mediaNumber}
-                      placeholder={derived.rows[i]?.number || 'מספר מדיה'}
+                      placeholder="20546"
                       onChange={(e) => setSample(sample, { mediaNumber: e.target.value })}
                     />
                   </td>
+                  {/* What the form prints: job number, then the media number. */}
+                  <td className="ltr">{derived.rows[i]?.number || '—'}</td>
                   <td>
                     <input
                       className="ltr"

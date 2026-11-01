@@ -126,12 +126,19 @@ export interface ChainOfCustodyForm {
   rows: CocRow[];
 }
 
-/** The sample number the form prints for a room — its media number, or "511-3". */
+/**
+ * The sample number the form prints for a room — "<job number>-<media number>",
+ * e.g. "817-20546".
+ *
+ * A room without a media number falls back to its row: "817-3". A media number already
+ * written with the job in front is not prefixed twice.
+ */
 export function cocNumber(report: Pick<MoldReport, 'coc'>, sample: MoldSample, index: number): string {
-  const media = sample.mediaNumber.trim();
-  if (media) return media;
   const job = report.coc.jobNumber.trim();
-  return job ? `${job}-${index}` : '';
+  const media = sample.mediaNumber.trim();
+  if (!job) return media;
+  if (!media) return `${job}-${index}`;
+  return media.startsWith(`${job}-`) ? media : `${job}-${media}`;
 }
 
 /** The rooms that go on the form: every sample with a name or a number. */
@@ -176,11 +183,12 @@ export function chainOfCustody(report: MoldReport): ChainOfCustodyForm {
 }
 
 /**
- * The report with the numbers the form is about to print written into its rooms.
+ * The report with the number each room is printed under recorded as its laboratory
+ * number.
  *
- * A room left without a media number is printed as "511-3", and that is the number
- * Hayes will send its result back under. Recording it on the room is what lets the
- * scan a week later find the room again — see `labResultFor`.
+ * Hayes reports every result under the number on the form ("817-20546"), and the
+ * laboratory number is the first thing a result is matched to its room by — see
+ * `labResultFor`. The media number itself is left as the surveyor typed it.
  */
 export function withCocNumbers(report: MoldReport): MoldReport {
   const listed = cocSamples(report);
@@ -188,9 +196,9 @@ export function withCocNumbers(report: MoldReport): MoldReport {
     ...report,
     samples: report.samples.map((sample) => {
       const i = listed.indexOf(sample);
-      if (i < 0 || sample.mediaNumber.trim()) return sample;
+      if (i < 0) return sample;
       const number = cocNumber(report, sample, i + 1);
-      return number ? { ...sample, mediaNumber: number } : sample;
+      return number ? { ...sample, labNumber: number } : sample;
     }),
   };
 }

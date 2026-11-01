@@ -37,13 +37,20 @@ check(form.jobName === 'Ofek Richasim', 'Job Name מהמזמין');
 check(form.dateCollected === 'February 13, 2023' && form.releasedDate === 'Feb. 13, 2023', 'תאריכים');
 check(longDate('2023-05-02') === 'May 2, 2023' && shortDate('2023-05-02') === 'May 2, 2023', 'חודש קצר בלי נקודה');
 check(form.rows.length === 4, `חדר ריק לא מודפס — ${form.rows.length} שורות`);
-check(form.rows.map((r) => r.number).join(',') === '511-1,511-2,21734455,511-4', 'מספרים: מדיה או מספר עבודה-שורה');
+check(form.rows.map((r) => r.number).join(',') === '511-1,511-2,511-21734455,511-4', `מספרים: Job Number-מספר מדיה — ${form.rows.map((r) => r.number).join(',')}`);
+check(
+  chainOfCustody({ ...report, samples: [{ ...newSampleRow(), location: 'סלון', mediaNumber: '511-20546' }] }).rows[0].number === '511-20546',
+  'מספר מדיה שכבר כולל את ה-Job Number לא מוכפל',
+);
 check(form.rows[0].sample === "Shimi's desk" && form.rows[3].sample === 'Outdoors', 'שם הדגימה באנגלית');
 check(form.rows[2].sample === 'Bedroom', 'שם חדר מתורגם');
 check(form.rows.every((r) => r.analysis === 'S' && r.volume === '150 Lit.'), 'S ו-150 Lit. כברירת מחדל');
 
 const numbered = withCocNumbers(report);
-check(numbered.samples[0].mediaNumber === '511-1' && numbered.samples[2].mediaNumber === '21734455', 'המספרים נרשמים בחדרים');
+check(
+  numbered.samples[2].labNumber === '511-21734455' && numbered.samples[2].mediaNumber === '21734455',
+  'המספר המודפס נרשם כמספר המעבדה, מספר המדיה נשאר',
+);
 check(
   labResultFor({ labResults: [{ labNumber: '511-2', sampleName: 'West wing reception' } as never] }, numbered.samples[1]) !== null,
   'תוצאת Hayes 511-2 חוזרת לחדר שלה',
@@ -57,10 +64,11 @@ console.log('\nקליטת תוצאות Hayes (מהעורך או מהמייל):')
   });
   const scanned = applyLabScan(
     numbered,
-    [lab('511-1', "Shimi's desk", '900'), lab('511-4', 'Outdoors', '300'), lab('511-9', 'Garage', '50')],
+    [lab('511-1', "Shimi's desk", '900'), lab('511-21734455', 'Bedroom', '700'), lab('511-4', 'Outdoors', '300'), lab('511-9', 'Garage', '50')],
     { labReportNumber: '#26042301', labCollectedDate: '13/02/2023', labReceivedDate: '', labReportedDate: '' },
   );
   check(scanned.report.samples[0].totalCount === '900', 'התוצאה נכנסה לחדר לפי המספר מטופס ה-CoC');
+  check(scanned.report.samples[2].totalCount === '700', 'תוצאה 511-21734455 נכנסה לחדר עם מדיה 21734455');
   check(scanned.report.samples[3].totalCount === '300', 'ודגימת החוץ קיבלה את שלה');
   check(scanned.added === 1 && scanned.report.samples.at(-1)?.location === 'Garage', 'תוצאה בלי חדר — נוצר חדר חדש');
   check(scanned.report.labReportNumber === '#26042301', 'מספר דוח המעבדה מולא');
