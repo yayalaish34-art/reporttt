@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { listInstallations } from '@/lib/radon-installation-service';
-import { placementDate } from '@/lib/radon-installation';
+import { installationEnd, placementDate } from '@/lib/radon-installation';
 import { RadonTabs } from '../tabs';
 import { DeleteInstallationButton } from './delete-installation-button';
 
@@ -43,7 +43,9 @@ export default function InstallationsPage() {
                 </div>
                 <div className="meta">
                   {[
-                    placementDate(installation.installedOn),
+                    installation.testLength === 'קצרה' ? 'קצר טווח' : 'ארוך טווח',
+                    installation.installedOn &&
+                      `${placementDate(installation.installedOn)} עד ${placementDate(installationEnd(installation.testLength, installation.installedOn))}`,
                     `${installation.scanned} מתוך ${installation.spots} מקומות עם גלאי`,
                   ]
                     .filter(Boolean)

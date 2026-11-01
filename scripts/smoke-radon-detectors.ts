@@ -109,12 +109,18 @@ check(companyReport.siteKind === 'מקום עבודה' && companyReport.companyN
 
 console.log('התקנה:');
 const { claimDetector, createInstallation, createReportFromInstallation, deleteInstallation, listInstallations, loadInstallation, saveInstallation } = await import('../src/lib/radon-installation-service');
-const { floorLabel, floorTitle, placementDate, InstallationSchema } = await import('../src/lib/radon-installation');
+const { floorLabel, floorTitle, installationEnd, israelNow, placementDate, InstallationSchema } = await import('../src/lib/radon-installation');
 const site = person('רות אבן');
 const installationId = createInstallation();
 check(loadInstallation(installationId)!.spaces.length === 0, 'התקנה חדשה נפתחת ריקה');
 check(floorLabel(0) === 'צמוד קרקע' && floorTitle(-2) === 'קומה 2-' && floorLabel(20) === '20', 'קומה 0 נקראת צמוד קרקע');
 check(placementDate('2026-05-06') === '06/05/26', 'תאריך ההתקנה בפורמט הדוח');
+check(placementDate('2026-05-06T10:30') === '06/05/26 10:30', 'בדיקה קצרה מודפסת עם שעה');
+check(installationEnd('ארוכה', '2026-05-06') === '2026-08-04', 'ארוך טווח: סיום אחרי 90 ימים');
+check(installationEnd('קצרה', '2026-11-01T10:30') === '2026-11-04T10:30', 'קצר טווח: סיום אחרי 72 שעות');
+check(installationEnd('קצרה', '2026-10-23T10:00') === '2026-10-26T09:00', '72 שעות בדיוק גם כשהשעון משתנה');
+check(installationEnd('ארוכה', '') === '' && installationEnd('קצרה', '') === '', 'בלי התחלה אין סיום');
+check(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(israelNow()), 'שעון ישראל בפורמט שדה תאריך');
 check(InstallationSchema.safeParse({ spaces: [{ kind: 'room', floor: 21 }] }).success === false, 'קומה מחוץ לסקאלה נדחית');
 
 check(claimDetector(installationId, '', '300001').ok === false, 'בלי לקוח אין סריקה');
@@ -152,6 +158,7 @@ check(hallRow.roomName === 'אולם ספורט — מרכז האולם' && hall
 const roomRow = firstDraft.detectors[2];
 check(roomRow.roomName === 'סלון' && roomRow.floor === 'צמוד קרקע', 'חדר וקומה עוברים לדוח');
 check(roomRow.placedAt === '06/05/26' && roomRow.concentration === '40', 'תאריך ההתקנה והתוצאה בשורה');
+check(roomRow.collectedAt === '04/08/26' && roomRow.testLength === 'ארוכה', 'ארוך טווח: סיום וסוג עוברים לדוח');
 check(firstDraft.recipientName === 'רות אבן' && firstDraft.phone === '050-1111111', 'פרטי הלקוח מההתקנה');
 let againDraft = '';
 try { createReportFromInstallation(installationId, new Map()); } catch (err) { againDraft = String(err); }
@@ -172,8 +179,36 @@ check(claimDetector(otherInstallation, site.id, '300010').ok, 'מחיקת חדר
 saveInstallation(fresh, installed({ customerId: other.id, spaces: [room('300011')] }));
 deleteInstallation(fresh);
 check(assignDetectors(site.id, ['300011']).added.length === 1, 'מחיקת התקנה משחררת את הגלאים');
+const shortId = createInstallation();
+saveInstallation(shortId, installed({
+  testLength: 'קצרה',
+  installedOn: '2026-11-01T10:30',
+  spaces: [{ kind: 'room', description: 'מטבח', floor: 1, detectorNumber: '300020' }],
+}));
+const shortRow = loadRadonReport(createReportFromInstallation(shortId, new Map([reading('300020', '40', '10')])))!.detectors[0];
+check(shortRow.testLength === 'קצרה', 'קצר טווח עובר לדוח');
+check(shortRow.placedAt === '01/11/26 10:30' && shortRow.collectedAt === '04/11/26 10:30', 'קצר טווח: תאריך ושעה בדוח', shortRow.collectedAt);
+check(radonVerdict(shortRow) === RADON_VERDICTS.shortOk, 'קצר טווח תקין מפנה לבדיקה ארוכה');
+
 deleteInstallation(installationId);
 check(listCustomerDetectors(site.id).some((d) => d.detectorNumber === '300001' && d.reportId !== ''), 'גלאי שכבר בדוח נשאר רשום');
+
+console.log('קריאת תווית:');
+const { readDetectorLabel } = await import('../src/lib/radon-lab-scan');
+process.env.OPENAI_API_KEY = 'test';
+const realFetch = globalThis.fetch;
+const modelSays = (content: string) => {
+  globalThis.fetch = (async () => new Response(JSON.stringify({ choices: [{ message: { content } }] }))) as typeof fetch;
+};
+modelSays('{"number": "0018467"}');
+const label = await readDetectorLabel(Buffer.from('x'), 'image/jpeg');
+check(label === '0018467', 'המספר חוזר כפי שהודפס', label);
+check(detectorKey(label) === '18467', 'התווית מתאימה למספר של המעבדה');
+modelSays('{"number": ""}');
+check((await readDetectorLabel(Buffer.from('x'), 'image/jpeg')) === '', 'לא נקרא בוודאות — אין מספר');
+modelSays('{"number": "00184x7"}');
+check((await readDetectorLabel(Buffer.from('x'), 'image/jpeg')) === '', 'תשובה שאינה ספרות נדחית');
+globalThis.fetch = realFetch;
 
 deleteCustomer(home.id);
 check(assignDetectors(office.id, ['100012']).added.length === 1, 'מחיקת לקוח משחררת את הגלאים שלו');

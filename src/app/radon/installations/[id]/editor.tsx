@@ -13,8 +13,12 @@ import {
   FLOOR_MIN,
   HALL_POSITIONS,
   ROOM_DESCRIPTIONS,
+  LONG_TEST_DAYS,
+  SHORT_TEST_HOURS,
   floorTitle,
+  installationEnd,
   installationSpots,
+  israelNow,
   type InstalledHall,
   type InstalledRoom,
   type InstalledSpace,
@@ -27,6 +31,8 @@ import { radonCustomerMissing } from '@/lib/report-complete';
 type Target = { space: number; row?: number };
 
 const OTHER = '__other__';
+
+const BIG_BUTTON = { padding: '20px 12px', fontSize: 18, fontWeight: 700, justifyContent: 'center', textAlign: 'center' } as const;
 
 /**
  * The detector installation, written while walking the site.
@@ -142,6 +148,7 @@ export function InstallationEditor({ id, initial }: { id: string; initial: Insta
     setTarget(at);
   };
 
+  const short = installation.testLength === 'קצרה';
   const spots = installationSpots(installation);
   const missingDetector = spots.filter((spot) => spot.detectorNumber === '').length;
 
@@ -182,13 +189,51 @@ export function InstallationEditor({ id, initial }: { id: string; initial: Insta
             content: (
               <div>
                 <div className="grid">
+                  <div className="field wide">
+                    <label>סוג הגלאי</label>
+                    <div className="toggle">
+                      {(
+                        [
+                          ['ארוכה', `ארוך טווח — ${LONG_TEST_DAYS} ימים`],
+                          ['קצרה', `קצר טווח — ${SHORT_TEST_HOURS} שעות`],
+                        ] as const
+                      ).map(([value, text]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          className={installation.testLength === value ? 'active' : undefined}
+                          onClick={() => {
+                            if (installation.testLength === value) return;
+                            // Starts from now: the hour is what a short test is counted from.
+                            const now = israelNow();
+                            update({ testLength: value, installedOn: value === 'קצרה' ? now : now.slice(0, 10) });
+                            autosave.saveNow();
+                          }}
+                        >
+                          {text}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <div className="field">
-                    <label>תאריך התקנה</label>
+                    <label>{short ? 'התחלה — תאריך ושעה' : 'תאריך התחלה'}</label>
                     <input
-                      type="date"
+                      type={short ? 'datetime-local' : 'date'}
                       className="ltr"
                       value={installation.installedOn}
                       onChange={(e) => update({ installedOn: e.target.value })}
+                    />
+                  </div>
+                  <div className="field">
+                    <label>{short ? 'סיום — תאריך ושעה' : 'תאריך סיום'}</label>
+                    {/* Follows from the start; a detector collected on another day is
+                        corrected in the report, which is what prints it. */}
+                    <input
+                      type={short ? 'datetime-local' : 'date'}
+                      className="ltr"
+                      value={installationEnd(installation.testLength, installation.installedOn)}
+                      readOnly
+                      disabled
                     />
                   </div>
                 </div>
@@ -201,10 +246,6 @@ export function InstallationEditor({ id, initial }: { id: string; initial: Insta
                 )}
 
                 <div style={{ marginTop: 16 }}>
-                  {installation.spaces.length === 0 && (
-                    <div className="empty">עדיין לא נוספו חדרים או אולמות.</div>
-                  )}
-
                   {installation.spaces.map((space, index) => {
                     const ordinal = installation.spaces.slice(0, index + 1).filter((s) => s.kind === space.kind).length;
                     const blockProps = {
@@ -332,10 +373,13 @@ export function InstallationEditor({ id, initial }: { id: string; initial: Insta
                   })}
                 </div>
 
-                <div className="protocols-bare-actions">
+                {/* Under the last block rather than above the list: that is where the thumb is
+                    when a place has just been scanned and the next one is wanted. */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 8 }}>
                   <button
                     type="button"
-                    className="btn-primary btn-sm"
+                    className="btn-primary"
+                    style={BIG_BUTTON}
                     onClick={() =>
                       addSpace((floor) => ({ kind: 'room', description: '', floor, detectorNumber: '' }))
                     }
@@ -344,7 +388,8 @@ export function InstallationEditor({ id, initial }: { id: string; initial: Insta
                   </button>
                   <button
                     type="button"
-                    className="btn-primary btn-sm"
+                    className="btn-primary"
+                    style={BIG_BUTTON}
                     onClick={() =>
                       addSpace((floor) => ({
                         kind: 'hall',

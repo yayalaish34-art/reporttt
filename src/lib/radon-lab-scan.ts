@@ -129,7 +129,13 @@ export async function scanLabImages(
  * The image goes as a data URI rather than a URL: it never leaves this process
  * for anywhere but OpenAI, and there is nothing to clean up afterwards.
  */
-export async function scanLabImage(bytes: Buffer, contentType: string): Promise<LabScanRow[]> {
+async function askVision(
+  systemPrompt: string,
+  instruction: string,
+  bytes: Buffer,
+  contentType: string,
+  maxTokens: number,
+): Promise<unknown> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new LabScanError('לא הוגדר מפתח OpenAI בשרת.');
   if (bytes.length > MAX_IMAGE_BYTES) throw new LabScanError('התמונה גדולה מדי (מעל 20MB).');
@@ -140,13 +146,13 @@ export async function scanLabImage(bytes: Buffer, contentType: string): Promise<
   const body: Record<string, unknown> = {
     model,
     messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'system', content: systemPrompt },
       {
         role: 'user',
         content: [
           {
             type: 'text',
-            text: 'תמלל את כל שורות הטבלה שבתמונה. החזר JSON בלבד.',
+            text: instruction,
           },
           // "high" detail: the digits are small on a photographed screen, and at
           // the default the model reads 41 as 47 often enough to matter.
@@ -154,7 +160,7 @@ export async function scanLabImage(bytes: Buffer, contentType: string): Promise<
         ],
       },
     ],
-    max_completion_tokens: 8000,
+    max_completion_tokens: maxTokens,
     response_format: { type: 'json_object' },
   };
 
@@ -205,6 +211,12 @@ export async function scanLabImage(bytes: Buffer, contentType: string): Promise<
     throw new LabScanError('המודל לא החזיר JSON תקין.');
   }
 
+  return parsed;
+}
+
+export async function scanLabImage(bytes: Buffer, contentType: string): Promise<LabScanRow[]> {
+  const parsed = await askVision(SYSTEM_PROMPT, 'תמלל את כל שורות הטבלה שבתמונה. החזר JSON בלבד.', bytes, contentType, 8000);
+
   const raw = (parsed as { rows?: unknown }).rows;
   if (!Array.isArray(raw)) throw new LabScanError('המודל לא החזיר שורות.');
 
@@ -238,4 +250,28 @@ function normalizeRow(value: unknown): LabScanRow | null {
     status: asText(row.status),
     unreadable: row.unreadable === true,
   };
+}
+
+const LABEL_PROMPT = `אתה קורא מספר גלאי מתוך תמונה של תווית על גלאי ראדון.
+
+על התווית מודפס לוגו, ברקוד, ומתחת לברקוד מספר בן כמה ספרות, למשל 0018467.
+
+התפקיד שלך הוא תעתוק בלבד: החזר את הספרות המודפסות מתחת לברקוד, בדיוק כפי שהן, כולל אפסים בהתחלה.
+אל תנסה לפענח את הברקוד עצמו. אל תנחש ספרה: אם ספרה כלשהי אינה קריאה בוודאות, או שאין תווית בתמונה, החזר מחרוזת ריקה.
+
+החזר JSON בלבד: {"number": "0018467"}`;
+
+/**
+ * Reads a detector's number off a photograph of its label.
+ *
+ * The barcode on these labels prints too poorly to rely on: the thin bars come out broken
+ * or missing, while the digits beneath it stay large and clear. The answer is a suggestion
+ * for the person holding the detector to check, never a number used on its own.
+ *
+ * Returns '' when the model could not read it for certain.
+ */
+export async function readDetectorLabel(bytes: Buffer, contentType: string): Promise<string> {
+  const parsed = await askVision(LABEL_PROMPT, 'מה המספר שמודפס מתחת לברקוד? החזר JSON בלבד.', bytes, contentType, 2000);
+  const number = String((parsed as { number?: unknown }).number ?? '').trim();
+  return /^\d{3,15}$/.test(number) ? number : '';
 }

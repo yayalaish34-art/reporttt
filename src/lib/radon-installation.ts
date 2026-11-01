@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { TEST_LENGTHS } from './radon-schema';
 
 /**
  * A detector installation: which customer, and which detector went where.
@@ -46,7 +47,12 @@ export const InstallationSchema = z.object({
   city: text.default(''),
   phone: text.default(''),
   email: text.default(''),
-  /** ISO date; it prints as the placement date of every detector in the report. */
+  /** Decides how long the detectors stay up, and how the report judges them. */
+  testLength: z.enum(TEST_LENGTHS).default('ארוכה'),
+  /**
+   * When the detectors went up: "2026-05-06", or "2026-05-06T10:30" for a short test,
+   * whose 72 hours are counted from the hour. Israel time, as typed.
+   */
   installedOn: text.default(''),
   spaces: z.array(z.discriminatedUnion('kind', [InstalledRoomSchema, InstalledHallSchema])).default([]),
 });
@@ -104,10 +110,66 @@ export function floorTitle(value: number): string {
   return value === 0 ? 'צמוד קרקע' : `קומה ${floorLabel(value)}`;
 }
 
-/** "2026-05-06" as the report's table prints it, "06/05/26". */
+/** How long a long test stays up, in days. */
+export const LONG_TEST_DAYS = 90;
+
+/** How long a short test stays up, in hours. */
+export const SHORT_TEST_HOURS = 72;
+
+/** "2026-05-06" as the report's table prints it, "06/05/26", with the hour when there is one. */
 export function placementDate(iso: string): string {
-  const match = /^\d{2}(\d{2})-(\d{2})-(\d{2})/.exec(iso);
-  return match ? `${match[3]}/${match[2]}/${match[1]}` : '';
+  const match = /^\d{2}(\d{2})-(\d{2})-(\d{2})(?:T(\d{2}:\d{2}))?/.exec(iso);
+  if (!match) return '';
+  const date = `${match[3]}/${match[2]}/${match[1]}`;
+  return match[4] ? `${date} ${match[4]}` : date;
+}
+
+const ISRAEL = 'Asia/Jerusalem';
+
+/** A moment as Israel's wall clock reads it, "2026-05-06T10:30". */
+function israelWallClock(at: Date): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: ISRAEL,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(at);
+  const part = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
+  return `${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}`;
+}
+
+/** The moment Israel's wall clock reads this, or null for a value that is not one. */
+function fromIsraelWallClock(wall: string): Date | null {
+  const asUtc = new Date(`${wall}:00Z`);
+  if (Number.isNaN(asUtc.getTime())) return null;
+  const shown = new Date(`${israelWallClock(asUtc)}:00Z`);
+  return new Date(asUtc.getTime() - (shown.getTime() - asUtc.getTime()));
+}
+
+/** Now in Israel. Named by zone because the server runs in UTC and the browser may not be here. */
+export function israelNow(): string {
+  return israelWallClock(new Date());
+}
+
+/**
+ * When the test ends: 90 days on for a long test, 72 hours on for a short one.
+ *
+ * The short one is counted in elapsed hours, so a test running across a clock change
+ * still lasts 72 hours and ends an hour off the hour it started at.
+ */
+export function installationEnd(testLength: string, start: string): string {
+  // Checked first: given an empty date, the engine's lenient parser invents a year.
+  if (!/^\d{4}-\d{2}-\d{2}/.test(start)) return '';
+  if (testLength === 'קצרה') {
+    const at = fromIsraelWallClock(start.length === 10 ? `${start}T00:00` : start.slice(0, 16));
+    return at ? israelWallClock(new Date(at.getTime() + SHORT_TEST_HOURS * 3_600_000)) : '';
+  }
+  const day = new Date(`${start.slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(day.getTime())) return '';
+  return new Date(day.getTime() + LONG_TEST_DAYS * 86_400_000).toISOString().slice(0, 10);
 }
 
 export interface InstalledSpot {

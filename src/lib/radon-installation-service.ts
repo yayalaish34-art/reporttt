@@ -2,7 +2,14 @@ import { randomUUID } from 'node:crypto';
 import { db, now } from './db';
 import { customerLabel, loadCustomer } from './customer-service';
 import { createDraftReport, listInstallationDetectors, toDetector, type AssignedDetector } from './radon-detectors';
-import { InstallationSchema, installationSpots, placementDate, type Installation } from './radon-installation';
+import {
+  InstallationSchema,
+  installationEnd,
+  installationSpots,
+  israelNow,
+  placementDate,
+  type Installation,
+} from './radon-installation';
 import { detectorKey, isDetectorKey } from './radon-rules';
 import type { StoredReading } from './radon-readings-store';
 import { customerNameOf } from './report-title';
@@ -12,6 +19,7 @@ import { customerNameOf } from './report-title';
 export interface InstallationSummary {
   id: string;
   title: string;
+  testLength: string;
   installedOn: string;
   updatedAt: string;
   /** Spots with a detector scanned, out of all the spots added. */
@@ -43,6 +51,7 @@ export function listInstallations(): InstallationSummary[] {
     return {
       id: row.id,
       title: customerNameOf(installation),
+      testLength: installation.testLength,
       installedOn: installation.installedOn,
       updatedAt: row.updated_at,
       scanned: spots.filter((spot) => spot.detectorNumber !== '').length,
@@ -57,7 +66,7 @@ export function listInstallations(): InstallationSummary[] {
 export function createInstallation(): string {
   const id = randomUUID();
   const timestamp = now();
-  const blank = InstallationSchema.parse({ installedOn: timestamp.slice(0, 10) });
+  const blank = InstallationSchema.parse({ installedOn: israelNow().slice(0, 10) });
   db()
     .prepare('INSERT INTO radon_installations (id, title, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
     .run(id, '', JSON.stringify(blank), timestamp, timestamp);
@@ -95,16 +104,18 @@ function syncDetectors(id: string, installation: Installation): void {
   const spots = installationSpots(installation).filter((spot) => spot.detectorNumber !== '');
   const wanted = new Set(spots.map((spot) => spot.detectorNumber));
   const placedAt = placementDate(installation.installedOn);
+  const collectedAt = placementDate(installationEnd(installation.testLength, installation.installedOn));
+  const { testLength } = installation;
 
   const find = handle.prepare('SELECT * FROM radon_detectors WHERE detector_number = ?');
   const insert = handle.prepare(
     `INSERT INTO radon_detectors
-       (detector_number, customer_id, assigned_at, installation_id, room_name, floor, placed_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+       (detector_number, customer_id, assigned_at, installation_id, room_name, floor, placed_at, collected_at, test_length)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const update = handle.prepare(
     `UPDATE radon_detectors
-        SET customer_id = ?, installation_id = ?, room_name = ?, floor = ?, placed_at = ?
+        SET customer_id = ?, installation_id = ?, room_name = ?, floor = ?, placed_at = ?, collected_at = ?, test_length = ?
       WHERE detector_number = ?`,
   );
   const remove = handle.prepare(`DELETE FROM radon_detectors WHERE detector_number = ? AND report_id = ''`);
@@ -119,9 +130,28 @@ function syncDetectors(id: string, installation: Installation): void {
         const row = find.get(spot.detectorNumber) as Record<string, unknown> | undefined;
         const existing = row ? toDetector(row) : null;
         if (!existing) {
-          insert.run(spot.detectorNumber, installation.customerId, now(), id, spot.roomName, spot.floor, placedAt);
+          insert.run(
+            spot.detectorNumber,
+            installation.customerId,
+            now(),
+            id,
+            spot.roomName,
+            spot.floor,
+            placedAt,
+            collectedAt,
+            testLength,
+          );
         } else if (mayPlace(existing, id, installation.customerId) && existing.reportId === '') {
-          update.run(installation.customerId, id, spot.roomName, spot.floor, placedAt, spot.detectorNumber);
+          update.run(
+            installation.customerId,
+            id,
+            spot.roomName,
+            spot.floor,
+            placedAt,
+            collectedAt,
+            testLength,
+            spot.detectorNumber,
+          );
         }
       }
     }

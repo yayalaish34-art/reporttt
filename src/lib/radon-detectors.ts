@@ -24,6 +24,8 @@ export interface AssignedDetector {
   roomName: string;
   floor: string;
   placedAt: string;
+  collectedAt: string;
+  testLength: string;
 }
 
 export interface AssignOutcome {
@@ -55,7 +57,8 @@ export function recipientOf(customer: Customer): Recipient {
   };
 }
 
-const COLUMNS = 'detector_number, customer_id, report_id, assigned_at, installation_id, room_name, floor, placed_at';
+const COLUMNS =
+  'detector_number, customer_id, report_id, assigned_at, installation_id, room_name, floor, placed_at, collected_at, test_length';
 
 export function toDetector(row: Record<string, unknown>): AssignedDetector {
   return {
@@ -67,6 +70,8 @@ export function toDetector(row: Record<string, unknown>): AssignedDetector {
     roomName: String(row.room_name ?? ''),
     floor: String(row.floor ?? ''),
     placedAt: String(row.placed_at ?? ''),
+    collectedAt: String(row.collected_at ?? ''),
+    testLength: String(row.test_length ?? ''),
   };
 }
 
@@ -174,12 +179,15 @@ export function draftReportFromDetectors(
   });
 
   const rows = detectors.map((detector): DetectorRow => {
+    const blank = newDetectorRow(base);
     const row: DetectorRow = {
-      ...newDetectorRow(base),
+      ...blank,
       detectorNumber: detector.detectorNumber,
       roomName: detector.roomName,
       floor: detector.floor,
       placedAt: detector.placedAt,
+      collectedAt: detector.collectedAt,
+      testLength: detector.testLength || blank.testLength,
     };
     const reading = readings.get(detector.detectorNumber);
     if (!reading || reading.concentration.trim() === '' || implausibleUncertainty(reading.uncertainty)) {

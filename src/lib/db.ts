@@ -307,7 +307,7 @@ function migrate(handle: DatabaseSync): void {
    * Added as columns because the table may already exist without them.
    */
   const detectorColumns = handle.prepare(`PRAGMA table_info(radon_detectors)`).all() as Array<{ name: string }>;
-  for (const column of ['installation_id', 'room_name', 'floor', 'placed_at']) {
+  for (const column of ['installation_id', 'room_name', 'floor', 'placed_at', 'collected_at', 'test_length']) {
     if (!detectorColumns.some((c) => c.name === column)) {
       handle.exec(`ALTER TABLE radon_detectors ADD COLUMN ${column} TEXT NOT NULL DEFAULT ''`);
     }
