@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { BarcodeScanner, beep } from '../../barcode-scanner';
+import { BarcodeScanner, DetectorInput, beep } from '../../barcode-scanner';
 import { useCameraSupported } from '../../camera-capture';
 import { LabScanPanel } from '../../radon/[id]/lab-scan';
 import {
@@ -15,11 +15,13 @@ import {
 import type { AssignOutcome } from '@/lib/radon-detectors';
 import {
   DEFAULT_SERIES_LENGTH,
+  DETECTOR_PREFIX,
   MAX_SERIES_LENGTH,
   detectorKey,
   detectorSeries,
   implausibleUncertainty,
   isDetectorKey,
+  isWholeDetectorEntry,
 } from '@/lib/radon-rules';
 
 export interface DetectorView {
@@ -27,7 +29,13 @@ export interface DetectorView {
   reportId: string;
   /** Where an installation placed it; empty for one scanned straight onto the customer. */
   roomName: string;
+  floor: string;
   installationId: string;
+  testLength: string;
+  placedAt: string;
+  collectedAt: string;
+  /** How far the test has run, e.g. "נותרו 45 ימים". */
+  progress: string;
   concentration: string;
   uncertainty: string;
 }
@@ -84,7 +92,7 @@ export function RadonDetectorsSection({
   const cameraSupported = useCameraSupported();
   const [detectors, setDetectors] = useState(initial);
   const [mode, setMode] = useState<Mode>('single');
-  const [scan, setScan] = useState('');
+  const [scan, setScan] = useState(DETECTOR_PREFIX);
   const [seriesStart, setSeriesStart] = useState('');
   const [count, setCount] = useState(DEFAULT_SERIES_LENGTH);
   const [message, setMessage] = useState<Message | null>(null);
@@ -103,7 +111,19 @@ export function RadonDetectorsSection({
       setDetectors((current) => {
         const added = outcome.added
           .filter((n) => !current.some((d) => d.detectorNumber === n))
-          .map((detectorNumber) => ({ detectorNumber, reportId: '', roomName: '', installationId: '', concentration: '', uncertainty: '' }));
+          .map((detectorNumber) => ({
+            detectorNumber,
+            reportId: '',
+            roomName: '',
+            floor: '',
+            installationId: '',
+            testLength: '',
+            placedAt: '',
+            collectedAt: '',
+            progress: '',
+            concentration: '',
+            uncertainty: '',
+          }));
         return [...current, ...added].sort((a, b) => Number(a.detectorNumber) - Number(b.detectorNumber));
       });
       const next = describe(outcome);
@@ -120,10 +140,20 @@ export function RadonDetectorsSection({
     }
   };
 
+  /** The box refuses a half-typed number; the camera reads a whole label or nothing. */
+  const acceptTyped = (raw: string) => {
+    if (isWholeDetectorEntry(raw)) {
+      accept(raw);
+      return;
+    }
+    beep(false);
+    setMessage({ tone: 'error', text: `"${raw}" אינו מספר גלאי מלא.` });
+  };
+
   /** One scan, from the box or the camera. In a series it only sets where the series starts. */
   const accept = (raw: string) => {
     const key = detectorKey(raw);
-    setScan('');
+    setScan(DETECTOR_PREFIX);
     if (!isDetectorKey(key)) {
       beep(false);
       setMessage({ tone: 'error', text: `"${raw}" אינו מספר גלאי.` });
@@ -216,24 +246,19 @@ export function RadonDetectorsSection({
             <div className="field wide">
               <label>{mode === 'series' ? 'הגלאי הראשון בסדרה' : 'ברקוד'}</label>
               <div style={{ display: 'flex', gap: 8 }}>
-                <input
-                  ref={scanRef}
-                  className="ltr"
-                  autoFocus
-                  autoComplete="off"
-                  inputMode="numeric"
+                <DetectorInput
+                  inputRef={scanRef}
                   value={scan}
-                  placeholder="סרקו או הקלידו מספר גלאי"
-                  onChange={(e) => setScan(e.target.value)}
+                  onChange={setScan}
                   onKeyDown={(e) => {
                     // Scanners end a code with Enter or with Tab, depending on their setup.
-                    if ((e.key === 'Enter' || e.key === 'Tab') && scan.trim() !== '') {
+                    if ((e.key === 'Enter' || e.key === 'Tab') && scan !== DETECTOR_PREFIX) {
                       e.preventDefault();
-                      accept(scan);
+                      acceptTyped(scan);
                     }
                   }}
                 />
-                <button type="button" className="btn" disabled={scan.trim() === ''} onClick={() => accept(scan)}>
+                <button type="button" className="btn" disabled={!isWholeDetectorEntry(scan)} onClick={() => acceptTyped(scan)}>
                   הוספה
                 </button>
                 {cameraSupported && (
@@ -316,9 +341,14 @@ export function RadonDetectorsSection({
                 <tr>
                   <th>מס׳ גלאי</th>
                   <th>חדר</th>
+                  <th>קומה</th>
+                  <th>סוג</th>
+                  <th>התחלה</th>
+                  <th>סיום</th>
+                  <th>מצב הבדיקה</th>
                   <th>ריכוז [Bq/m³]</th>
                   <th>אי ודאות [%]</th>
-                  <th>מצב</th>
+                  <th>תוצאה</th>
                   <th>דוח</th>
                   <th />
                 </tr>
@@ -331,6 +361,11 @@ export function RadonDetectorsSection({
                     <tr key={detector.detectorNumber}>
                       <td className="ltr">{detector.detectorNumber}</td>
                       <td>{detector.roomName || '—'}</td>
+                      <td className="ltr">{detector.floor || '—'}</td>
+                      <td>{detector.testLength ? (detector.testLength === 'קצרה' ? 'קצר טווח' : 'ארוך טווח') : '—'}</td>
+                      <td className="ltr">{detector.placedAt || '—'}</td>
+                      <td className="ltr">{detector.collectedAt || '—'}</td>
+                      <td>{detector.progress || '—'}</td>
                       <td className="ltr">{detector.concentration || '—'}</td>
                       <td className="ltr">{detector.uncertainty || '—'}</td>
                       <td>

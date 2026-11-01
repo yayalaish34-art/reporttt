@@ -19,7 +19,7 @@ const { assignDetectors, createReportFromDetectors, listCustomerDetectors, relea
   '../src/lib/radon-detectors'
 );
 const { deleteRadonReport, loadRadonReport } = await import('../src/lib/radon-service');
-const { detectorKey, detectorSeries, radonVerdict } = await import('../src/lib/radon-rules');
+const { detectorKey, detectorSeries, isWholeDetectorEntry, radonVerdict, withDetectorPrefix } = await import('../src/lib/radon-rules');
 const { RADON_VERDICTS } = await import('../src/lib/radon-schema');
 const { db } = await import('../src/lib/db');
 
@@ -50,6 +50,15 @@ check(series.length === 25, '25 מספרים, כולל הראשון');
 check(series[0] === '100012' && series[1] === '100013' && series[24] === '100036', 'רצופים מהנסרק', series[24]);
 check(detectorSeries('שלום', 25).length === 0, 'סריקה בלי מספר לא יוצרת סדרה');
 check(detectorKey('RV-0100012') === '100012', 'מספר נסרק מתנרמל למפתח של המעבדה');
+
+console.log('הקלדה ידנית:');
+check(withDetectorPrefix('0018467') === '0018467', 'מספר עם הקידומת נשאר כמו שהוא');
+check(withDetectorPrefix('0') === '00' && withDetectorPrefix('') === '00', 'אי אפשר למחוק את ה-00');
+check(withDetectorPrefix('018467') === '0018467', 'מחיקת אפס אחד מחזירה אותו');
+check(withDetectorPrefix('18467') === '0018467', 'הדבקת מספר בלי קידומת');
+check(isWholeDetectorEntry('0018467'), '00 ועוד 5 ספרות הוא מספר מלא');
+check(!isWholeDetectorEntry('001846') && !isWholeDetectorEntry('00'), 'מספר חלקי נדחה');
+check(isWholeDetectorEntry('000018467') && detectorKey('000018467') === '18467', 'סורק שמקליד את כל התווית אחרי ה-00');
 
 console.log('שיוך:');
 const home = person('דנה כהן');
@@ -109,7 +118,7 @@ check(companyReport.siteKind === 'מקום עבודה' && companyReport.companyN
 
 console.log('התקנה:');
 const { claimDetector, createInstallation, createReportFromInstallation, deleteInstallation, listInstallations, loadInstallation, saveInstallation } = await import('../src/lib/radon-installation-service');
-const { floorLabel, floorTitle, installationEnd, israelNow, placementDate, InstallationSchema } = await import('../src/lib/radon-installation');
+const { floorLabel, floorTitle, installationEnd, israelNow, placementDate, testProgress, InstallationSchema } = await import('../src/lib/radon-installation');
 const site = person('רות אבן');
 const installationId = createInstallation();
 check(loadInstallation(installationId)!.spaces.length === 0, 'התקנה חדשה נפתחת ריקה');
@@ -122,6 +131,16 @@ check(installationEnd('קצרה', '2026-10-23T10:00') === '2026-10-26T09:00', '7
 check(installationEnd('ארוכה', '') === '' && installationEnd('קצרה', '') === '', 'בלי התחלה אין סיום');
 check(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(israelNow()), 'שעון ישראל בפורמט שדה תאריך');
 check(InstallationSchema.safeParse({ spaces: [{ kind: 'room', floor: 21 }] }).success === false, 'קומה מחוץ לסקאלה נדחית');
+
+const at = new Date('2026-11-01T10:00:00+02:00');
+check(testProgress('01/11/26', '30/01/27', at) === 'נותרו 90 ימים', 'ארוך טווח: ימים שנותרו', testProgress('01/11/26', '30/01/27', at));
+check(testProgress('01/11/26 10:00', '04/11/26 10:00', at) === 'נותרו 72 שעות', 'קצר טווח: שעות שנותרו', testProgress('01/11/26 10:00', '04/11/26 10:00', at));
+check(testProgress('01/11/26 10:00', '01/11/26 10:30', at) === 'נותרה שעה', 'שעה אחרונה');
+check(testProgress('01/08/26', '30/10/26', at) === 'הסתיים', 'בדיקה שהסתיימה');
+check(testProgress('02/11/26', '30/01/27', at) === 'טרם התחיל', 'בדיקה עתידית');
+check(testProgress('', '', at) === '', 'גלאי בלי תאריכים');
+const fromCard = loadInstallation(createInstallation(office.id))!;
+check(fromCard.customerId === office.id && fromCard.companyName === 'חברת בדיקה', 'התקנה מכרטיס הלקוח נפתחת עם הלקוח');
 
 check(claimDetector(installationId, '', '300001').ok === false, 'בלי לקוח אין סריקה');
 const claimed = claimDetector(installationId, site.id, '0300001');

@@ -1,5 +1,6 @@
 'use server';
 
+import { mirrorCustomerDetectors } from '@/lib/radon-detector-mirror';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { DraftReportSchema, ReportSchema, type Report } from '@/lib/report-schema';
@@ -626,6 +627,8 @@ export async function saveCustomer(id: string | null, form: FormData): Promise<A
 
 export async function removeCustomer(id: string): Promise<void> {
   deleteCustomer(id);
+  // Their detectors went with them, so the copy on the CRM's side goes too.
+  void mirrorCustomerDetectors(id);
   revalidatePath('/customers');
 }
 

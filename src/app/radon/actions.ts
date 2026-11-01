@@ -22,6 +22,7 @@ import {
 } from '@/lib/radon-detectors';
 import { findReadings, saveReadings } from '@/lib/radon-readings-store';
 import { refreshCrmCustomer } from '@/lib/crm-import';
+import { mirrorCustomerDetectors } from '@/lib/radon-detector-mirror';
 import {
   claimDetector,
   createInstallation,
@@ -69,7 +70,9 @@ export async function createBlankRadonReportId(): Promise<string> {
 }
 
 export async function removeRadonReport(id: string): Promise<void> {
+  const customerId = loadRadonReport(id)?.customerId ?? '';
   deleteRadonReport(id);
+  void mirrorCustomerDetectors(customerId);
   revalidatePath('/radon');
 }
 
@@ -188,11 +191,14 @@ export async function finishRadonReport(id: string, data: unknown): Promise<Rado
  * refreshes itself when the scanning pauses.
  */
 export async function addCustomerDetectors(customerId: string, numbers: string[]): Promise<AssignOutcome> {
-  return assignDetectors(customerId, numbers);
+  const outcome = assignDetectors(customerId, numbers);
+  void mirrorCustomerDetectors(customerId);
+  return outcome;
 }
 
 export async function removeCustomerDetectors(customerId: string, numbers: string[]): Promise<void> {
   releaseDetectors(customerId, numbers);
+  void mirrorCustomerDetectors(customerId);
   revalidatePath(`/customers/${customerId}`);
 }
 
@@ -226,6 +232,7 @@ export async function draftCustomerRadonReport(
     const numbers = listCustomerDetectors(customerId).map((detector) => detector.detectorNumber);
     const readings = (await findReadings(numbers)) ?? new Map();
     const reportId = createReportFromDetectors(customerId, readings);
+    void mirrorCustomerDetectors(customerId);
     revalidatePath('/radon');
     revalidatePath(`/customers/${customerId}`);
     return { ok: true, reportId };
@@ -237,8 +244,8 @@ export async function draftCustomerRadonReport(
 // ── Detector installations ──────────────────────────────────────────
 
 /** A new installation's id, without touching the cache — see `createBlankRadonReportId`. */
-export async function createInstallationId(): Promise<string> {
-  return createInstallation();
+export async function createInstallationId(customerId?: string): Promise<string> {
+  return createInstallation(customerId);
 }
 
 /** The autosave behind the installation. Not revalidated: this runs every few seconds. */
@@ -247,6 +254,7 @@ export async function persistInstallation(id: string, data: unknown): Promise<{ 
   if (!parsed.success) return { ok: false, message: 'ההתקנה לא נשמרה' };
   try {
     saveInstallation(id, parsed.data);
+    void mirrorCustomerDetectors(parsed.data.customerId);
     return { ok: true, message: '' };
   } catch (err) {
     return { ok: false, message: err instanceof Error ? err.message : 'שמירה נכשלה' };
@@ -259,7 +267,9 @@ export async function scanInstallationDetector(id: string, customerId: string, c
 }
 
 export async function removeInstallation(id: string): Promise<void> {
+  const customerId = loadInstallation(id)?.customerId ?? '';
   deleteInstallation(id);
+  void mirrorCustomerDetectors(customerId);
   revalidatePath('/radon/installations');
   revalidatePath('/radon');
 }
@@ -275,6 +285,7 @@ export async function draftReportFromInstallation(id: string): Promise<void> {
   let reportId = '';
   try {
     reportId = createReportFromInstallation(id, readings);
+    void mirrorCustomerDetectors(installation.customerId);
   } catch (err) {
     console.error('הפקת דוח מההתקנה נכשלה', err);
   }

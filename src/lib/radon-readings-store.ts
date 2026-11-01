@@ -34,7 +34,7 @@ export function readingsStoreConfigured(): boolean {
   return Boolean(process.env.CRM_DATABASE_URL);
 }
 
-async function connect(): Promise<Client> {
+export async function connectReadingsStore(): Promise<Client> {
   const connectionString = process.env.CRM_DATABASE_URL;
   if (!connectionString) throw new Error('חיבור ל-Supabase לא הוגדר בשרת (CRM_DATABASE_URL).');
   const client = new Client({ connectionString, ssl: { rejectUnauthorized: false } });
@@ -81,7 +81,7 @@ export async function saveReadings(readings: StoredReading[]): Promise<{ saved: 
 
   let client: Client | null = null;
   try {
-    client = await connect();
+    client = await connectReadingsStore();
     await ensureTable(client);
 
     for (const reading of readings) {
@@ -128,7 +128,7 @@ export async function findReadings(detectorNumbers: string[]): Promise<Map<strin
 
   let client: Client | null = null;
   try {
-    client = await connect();
+    client = await connectReadingsStore();
     await ensureTable(client);
     const { rows } = await client.query(
       `SELECT "detectorNumber", "concentration", "uncertainty", "status", "reportId", "customerId"
@@ -152,7 +152,7 @@ export async function findReading(detectorNumber: string): Promise<StoredReading
 
   let client: Client | null = null;
   try {
-    client = await connect();
+    client = await connectReadingsStore();
     await ensureTable(client);
     const { rows } = await client.query(
       `SELECT "detectorNumber", "concentration", "uncertainty", "status", "reportId", "customerId"

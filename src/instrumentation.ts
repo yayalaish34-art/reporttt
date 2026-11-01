@@ -20,6 +20,7 @@ export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
     const { crmConfigured, syncCrmCustomers } = await import('./lib/crm-import');
     if (!crmConfigured()) return;
+    const { mirrorAllDetectors } = await import('./lib/radon-detector-mirror');
 
     const tick = () =>
       syncCrmCustomers()
@@ -29,6 +30,10 @@ export async function register() {
         .catch((err) => console.error('סנכרון לקוחות מה-CRM נכשל', err));
 
     setTimeout(tick, FIRST_RUN_DELAY_MS).unref();
+    // Fills the copy the CRM reads, and makes good any write that was missed.
+    setTimeout(() => {
+      mirrorAllDetectors().catch((err) => console.error('העתקת הגלאים ל-Supabase נכשלה', err));
+    }, FIRST_RUN_DELAY_MS).unref();
     setInterval(tick, INTERVAL_MS).unref();
   }
 }

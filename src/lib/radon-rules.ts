@@ -48,6 +48,27 @@ export function isDetectorKey(key: string): boolean {
   return /^\d{3,15}$/.test(key);
 }
 
+/** Every detector label starts with these, so the box starts with them too. */
+export const DETECTOR_PREFIX = '00';
+
+/** A label's full length, prefix included. */
+const LABEL_DIGITS = 7;
+
+/** What the detector box holds after an edit: the prefix stays, whatever was deleted. */
+export function withDetectorPrefix(value: string): string {
+  return value.startsWith(DETECTOR_PREFIX) ? value : DETECTOR_PREFIX + value.replace(/^0/, '');
+}
+
+/**
+ * Whether the box holds a whole number, so a half-typed one is not taken for a detector.
+ *
+ * "At least" because a hardware scanner types the whole label after the prefix, and the
+ * extra zeros fall away in `detectorKey`.
+ */
+export function isWholeDetectorEntry(value: string): boolean {
+  return value.replace(/\D+/g, '').length >= LABEL_DIGITS;
+}
+
 /** The scanned number and the ones after it, `count` numbers in all. */
 export function detectorSeries(start: string, count: number): string[] {
   const key = detectorKey(start);

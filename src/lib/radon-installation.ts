@@ -172,6 +172,35 @@ export function installationEnd(testLength: string, start: string): string {
   return new Date(day.getTime() + LONG_TEST_DAYS * 86_400_000).toISOString().slice(0, 10);
 }
 
+/** A printed date back to a moment: "04/08/26", or "04/08/26 10:30" for a short test. */
+export function printedDateToMoment(printed: string): Date | null {
+  const match = /^(\d{2})\/(\d{2})\/(\d{2})(?: (\d{2}:\d{2}))?$/.exec(printed.trim());
+  if (!match) return null;
+  return fromIsraelWallClock(`20${match[3]}-${match[2]}-${match[1]}T${match[4] ?? '00:00'}`);
+}
+
+/**
+ * How far a detector's test has run, from its printed dates.
+ *
+ * In hours where the dates carry an hour, since a short test is measured in them.
+ * Empty for a detector with no dates, which was scanned on without an installation.
+ */
+export function testProgress(placedAt: string, collectedAt: string, now = new Date()): string {
+  const end = printedDateToMoment(collectedAt);
+  if (!end) return '';
+  const start = printedDateToMoment(placedAt);
+  if (start && now < start) return 'טרם התחיל';
+
+  const left = end.getTime() - now.getTime();
+  if (left <= 0) return 'הסתיים';
+  if (collectedAt.includes(':')) {
+    const hours = Math.ceil(left / 3_600_000);
+    return hours === 1 ? 'נותרה שעה' : `נותרו ${hours} שעות`;
+  }
+  const days = Math.ceil(left / 86_400_000);
+  return days === 1 ? 'נותר יום אחד' : `נותרו ${days} ימים`;
+}
+
 export interface InstalledSpot {
   detectorNumber: string;
   /** The room name the report prints for this detector. */

@@ -1,7 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { db, now } from './db';
 import { customerLabel, loadCustomer } from './customer-service';
-import { createDraftReport, listInstallationDetectors, toDetector, type AssignedDetector } from './radon-detectors';
+import {
+  createDraftReport,
+  listInstallationDetectors,
+  recipientOf,
+  toDetector,
+  type AssignedDetector,
+} from './radon-detectors';
 import {
   InstallationSchema,
   installationEnd,
@@ -18,6 +24,7 @@ import { customerNameOf } from './report-title';
 
 export interface InstallationSummary {
   id: string;
+  customerId: string;
   title: string;
   testLength: string;
   installedOn: string;
@@ -50,6 +57,7 @@ export function listInstallations(): InstallationSummary[] {
     const spots = installationSpots(installation);
     return {
       id: row.id,
+      customerId: installation.customerId,
       title: customerNameOf(installation),
       testLength: installation.testLength,
       installedOn: installation.installedOn,
@@ -63,10 +71,15 @@ export function listInstallations(): InstallationSummary[] {
   });
 }
 
-export function createInstallation(): string {
+/** A new installation, already filled in when started from a customer's card. */
+export function createInstallation(customerId?: string): string {
   const id = randomUUID();
   const timestamp = now();
-  const blank = InstallationSchema.parse({ installedOn: israelNow().slice(0, 10) });
+  const customer = customerId ? loadCustomer(customerId) : null;
+  const blank = InstallationSchema.parse({
+    ...(customer ? recipientOf(customer) : {}),
+    installedOn: israelNow().slice(0, 10),
+  });
   db()
     .prepare('INSERT INTO radon_installations (id, title, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
     .run(id, '', JSON.stringify(blank), timestamp, timestamp);

@@ -159,7 +159,8 @@ export function InstallationEditor({ id, initial }: { id: string; initial: Insta
         setFinishError(result.message);
         return;
       }
-      window.location.href = '/radon/installations';
+      // The customer's card is where an installation ends up: all their detectors, and how far each has run.
+      window.location.href = installation.customerId ? `/customers/${installation.customerId}` : '/radon/installations';
     });
 
   const customerGaps = installation.customerId

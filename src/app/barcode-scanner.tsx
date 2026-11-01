@@ -1,8 +1,14 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type KeyboardEventHandler, type RefObject } from 'react';
 import { Modal } from './modal';
-import { detectorKey, isDetectorKey } from '@/lib/radon-rules';
+import {
+  DETECTOR_PREFIX,
+  detectorKey,
+  isDetectorKey,
+  isWholeDetectorEntry,
+  withDetectorPrefix,
+} from '@/lib/radon-rules';
 import { shrinkPhoto } from '@/lib/shrink-photo';
 
 /** How long the same code is ignored, since the camera keeps reading whatever it faces. */
@@ -21,6 +27,56 @@ export function beep(ok: boolean) {
   } catch {
     /* no sound available; the message on screen says the same */
   }
+}
+
+/**
+ * The detector number's box, holding the "00" every label starts with.
+ *
+ * The caret is kept after the prefix, on every route to it. Typed in front of the zeros,
+ * "18469" would become "1018469": a valid-looking number for a detector that does not exist.
+ * A selection is left alone, so select-all and type still replaces the number.
+ */
+export function DetectorInput({
+  inputRef,
+  value,
+  onChange,
+  onKeyDown,
+}: {
+  inputRef: RefObject<HTMLInputElement | null>;
+  value: string;
+  onChange: (value: string) => void;
+  onKeyDown: KeyboardEventHandler<HTMLInputElement>;
+}) {
+  const keepAfterPrefix = (input: HTMLInputElement) => {
+    const { selectionStart, selectionEnd } = input;
+    if (selectionStart !== selectionEnd) return;
+    if ((selectionStart ?? 0) < DETECTOR_PREFIX.length) {
+      input.setSelectionRange(input.value.length, input.value.length);
+    }
+  };
+
+  // autoFocus lands before React's handlers are attached, so onFocus never hears of it.
+  useEffect(() => {
+    const input = inputRef.current;
+    if (input) input.setSelectionRange(input.value.length, input.value.length);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <input
+      ref={inputRef}
+      className="ltr"
+      autoFocus
+      autoComplete="off"
+      inputMode="numeric"
+      value={value}
+      aria-label="מספר גלאי"
+      onFocus={(e) => keepAfterPrefix(e.currentTarget)}
+      onSelect={(e) => keepAfterPrefix(e.currentTarget)}
+      onChange={(e) => onChange(withDetectorPrefix(e.target.value))}
+      onKeyDown={onKeyDown}
+    />
+  );
 }
 
 /** How close the live view zooms where the camera allows it, since a label this small fills little of the frame. */
@@ -55,7 +111,7 @@ export function BarcodeScanner({
   error?: string;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [typed, setTyped] = useState('');
+  const [typed, setTyped] = useState(DETECTOR_PREFIX);
   const [cameraError, setCameraError] = useState('');
   const [ready, setReady] = useState(false);
   const [reading, setReading] = useState(false);
@@ -147,9 +203,9 @@ export function BarcodeScanner({
   }, []);
 
   const submit = () => {
-    if (typed.trim() === '') return;
+    if (!isWholeDetectorEntry(typed)) return;
     onCodeRef.current(typed);
-    setTyped('');
+    setTyped(DETECTOR_PREFIX);
     setPhotoNote(null);
   };
 
@@ -168,7 +224,7 @@ export function BarcodeScanner({
       const payload = await response.json();
       if (!response.ok) throw new Error(payload?.error ?? 'קריאת התמונה נכשלה');
       if (payload.number) {
-        setTyped(payload.number);
+        setTyped(withDetectorPrefix(payload.number));
         setPhotoNote({ tone: 'ok', text: 'בדקו שהמספר זהה לתווית ולחצו ״אישור״.' });
         box.current?.focus();
       } else {
@@ -189,27 +245,23 @@ export function BarcodeScanner({
     <Modal title={title} onClose={onClose} wide>
       <div className="field" style={{ marginBottom: 12 }}>
         <div style={{ display: 'flex', gap: 8 }}>
-          <input
-            ref={box}
-            className="ltr"
-            autoFocus
-            autoComplete="off"
-            inputMode="numeric"
+          <DetectorInput
+            inputRef={box}
             value={typed}
-            placeholder="סרקו או הקלידו מספר גלאי"
-            onChange={(e) => setTyped(e.target.value)}
+            onChange={setTyped}
             onKeyDown={(e) => {
               // Scanners end a code with Enter or with Tab, depending on their setup.
-              if ((e.key === 'Enter' || e.key === 'Tab') && typed.trim() !== '') {
+              if ((e.key === 'Enter' || e.key === 'Tab') && typed !== DETECTOR_PREFIX) {
                 e.preventDefault();
                 submit();
               }
             }}
           />
-          <button type="button" className="btn" disabled={typed.trim() === ''} onClick={submit}>
+          <button type="button" className="btn" disabled={!isWholeDetectorEntry(typed)} onClick={submit}>
             אישור
           </button>
         </div>
+        <span className="hint">הקלידו את 5 הספרות שאחרי ה-00, או סרקו.</span>
       </div>
 
       <input
