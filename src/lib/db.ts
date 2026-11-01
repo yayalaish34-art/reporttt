@@ -131,6 +131,17 @@ function migrate(handle: DatabaseSync): void {
 
     CREATE INDEX IF NOT EXISTS idx_radon_detectors_customer ON radon_detectors(customer_id);
 
+    /** Detector installations — same five-column shape as the reports. */
+    CREATE TABLE IF NOT EXISTS radon_installations (
+      id           TEXT PRIMARY KEY,
+      title        TEXT NOT NULL DEFAULT '',
+      data         TEXT NOT NULL,
+      created_at   TEXT NOT NULL,
+      updated_at   TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_radon_installations_updated ON radon_installations(updated_at DESC);
+
     CREATE TABLE IF NOT EXISTS asbestos_reports (
       id           TEXT PRIMARY KEY,
       reference    TEXT NOT NULL DEFAULT '',
@@ -288,6 +299,18 @@ function migrate(handle: DatabaseSync): void {
     handle.exec(`ALTER TABLE templates ADD COLUMN kind TEXT NOT NULL DEFAULT 'radiation'`);
     // The old index allowed exactly one active row in the whole table.
     handle.exec(`DROP INDEX IF EXISTS idx_templates_active`);
+  }
+
+  /**
+   * Where each detector was installed, so a report drafted later can print it.
+   *
+   * Added as columns because the table may already exist without them.
+   */
+  const detectorColumns = handle.prepare(`PRAGMA table_info(radon_detectors)`).all() as Array<{ name: string }>;
+  for (const column of ['installation_id', 'room_name', 'floor', 'placed_at']) {
+    if (!detectorColumns.some((c) => c.name === column)) {
+      handle.exec(`ALTER TABLE radon_detectors ADD COLUMN ${column} TEXT NOT NULL DEFAULT ''`);
+    }
   }
 
   // One active template per kind, enforced in the index rather than in

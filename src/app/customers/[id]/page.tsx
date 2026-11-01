@@ -48,6 +48,8 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
           return {
             detectorNumber: detector.detectorNumber,
             reportId: detector.reportId,
+            roomName: detector.roomName,
+            installationId: detector.installationId,
             concentration: reading?.concentration ?? '',
             uncertainty: reading?.uncertainty ?? '',
           };

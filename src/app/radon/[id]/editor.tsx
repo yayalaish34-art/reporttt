@@ -1,12 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useState, useTransition } from 'react';
-import { CustomerPicker } from '../../reports/[id]/customer-picker';
 import { finishRadonReport, persistRadonReportDraft } from '../actions';
 import type { DetectorRow, RadonReport } from '@/lib/radon-schema';
 import { SITE_KINDS, TEST_LENGTHS, RADON_VERDICTS } from '@/lib/radon-schema';
 import { actionLevel, combinedValue, implausibleUncertainty, newDetectorRow, radonVerdict, toNumber } from '@/lib/radon-rules';
 import { LabScanPanel } from './lab-scan';
+import { RadonCustomerFields, Text } from '../customer-fields';
 import {
   radonCustomerMissing,
   radonDetectorsMissing,
@@ -231,82 +231,7 @@ export function RadonEditor({ id, initial }: { id: string; initial: RadonReport 
           const gaps = radonCustomerMissing(report);
           return gaps ? `חסר כדי להמשיך: ${gaps}` : undefined;
         })(),
-        content: (
-        <div>
-          <div className="grid">
-            <CustomerPicker
-              onPick={(fields) =>
-                update({
-                  customerId: fields.customerId,
-                  // Carried from the directory: a private customer picked here
-                  // must not leave the report set to "company".
-                  customerType: fields.customerType,
-                  recipientName: fields.recipientName,
-                  companyName: fields.customerType === 'company' ? fields.companyName : '',
-                  addressLine: fields.addressLine,
-                  city: fields.city,
-                  phone: fields.phone,
-                  email: fields.email,
-                })
-              }
-            />
-            <div className="field wide">
-              <label>סוג לקוח</label>
-              <div className="toggle">
-                {(
-                  [
-                    ['company', 'חברה'],
-                    ['private', 'לקוח פרטי'],
-                  ] as const
-                ).map(([value, text]) => (
-                  <button
-                    key={value}
-                    type="button"
-                    className={report.customerType === value ? 'active' : undefined}
-                    onClick={() =>
-                      // A private recipient has no company line; clearing it keeps
-                      // a stale company from reappearing on a later switch back.
-                      update(value === 'private' ? { customerType: value, companyName: '' } : { customerType: value })
-                    }
-                  >
-                    {text}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <Text
-              label={report.customerType === 'private' ? 'שם הלקוח' : 'איש הקשר'}
-              placeholder="חובה"
-              value={report.recipientName}
-              onChange={(v) => update({ recipientName: v })}
-            />
-            {report.customerType === 'company' && (
-              <Text label="שם החברה" value={report.companyName} onChange={(v) => update({ companyName: v })} />
-            )}
-            {/* Same labelling as the radiation report: whose address, whose
-                telephone. The two forms describe the same recipient. */}
-            <Text
-              label={report.customerType === 'private' ? 'כתובת הלקוח' : 'כתובת החברה'}
-              value={report.addressLine}
-              onChange={(v) => update({ addressLine: v })}
-            />
-            <Text label="ישוב" value={report.city} onChange={(v) => update({ city: v })} />
-            <Text
-              label={report.customerType === 'private' ? 'נייד' : 'נייד איש הקשר'}
-              value={report.phone}
-              onChange={(v) => update({ phone: v })}
-              ltr
-            />
-            <Text
-              label={report.customerType === 'private' ? 'דוא״ל' : 'דוא״ל איש הקשר'}
-              value={report.email}
-              onChange={(v) => update({ email: v })}
-              ltr
-            />
-          </div>
-        </div>
-        ),
+        content: <RadonCustomerFields customer={report} update={update} />,
       },
       {
         title: 'פרטי הבדיקה',
@@ -592,49 +517,3 @@ function RadonSummary({ report }: { report: RadonReport }) {
     </div>
   );
 }
-
-function Text({
-  label,
-  value,
-  onChange,
-  ltr,
-  wide,
-  optional,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  ltr?: boolean;
-  wide?: boolean;
-  /** Left out of the step's field count — a line that may legitimately stay empty. */
-  optional?: boolean;
-  /**
-   * Shown in the empty box.
-   *
-   * Where a field is required this carries "חובה", so the demand sits inside the box the
-   * surveyor is looking at rather than in a parenthetical on the label — and it clears
-   * itself the moment anything is typed, which a label cannot do.
-   */
-  placeholder?: string;
-}) {
-  // `needed` is what the phone stylesheet draws the waiting-mark from, and `data-filled`
-  // is what the step header counts. Both derive from the value, so the mark and the
-  // count cannot disagree with the box they describe.
-  const needed = !optional;
-  return (
-    <div
-      className={`field${wide ? ' wide' : ''}${needed ? ' needed' : ''}`}
-      data-filled={needed ? (value.trim() !== '' ? 'true' : 'false') : undefined}
-    >
-      <label>{label}</label>
-      <input
-        className={ltr ? 'ltr' : undefined}
-        value={value}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-      />
-    </div>
-  );
-}
-

@@ -1,29 +1,35 @@
 import Link from 'next/link';
 import { listRadonReports } from '@/lib/radon-service';
+import { listInstallations } from '@/lib/radon-installation-service';
+import { findReadings } from '@/lib/radon-readings-store';
 import { activeTemplate } from '@/lib/docx/template-store';
-import { createBlankRadonReport } from './actions';
+import { createBlankRadonReport, draftReportFromInstallation } from './actions';
+import { RadonTabs } from './tabs';
 import { DeleteRadonButton } from './delete-radon-button';
 
 export const dynamic = 'force-dynamic';
-export const metadata = { title: 'דוח ראדון' };
+export const metadata = { title: 'הפקת דוחות ראדון' };
 
-export default function RadonPage() {
+export default async function RadonPage() {
   const reports = listRadonReports();
   const template = activeTemplate('radon');
 
+  // One query for every waiting detector, so each installation can say how far its results got.
+  const waiting = listInstallations().filter((installation) => installation.unreported.length > 0);
+  const readings = await findReadings(waiting.flatMap((installation) => installation.unreported));
+
   return (
     <>
+      <RadonTabs active="reports" />
+
       <div className="page-head">
         <div>
-          <h1>דוח ראדון</h1>
+          <h1>הפקת דוחות</h1>
           <p className="subtitle">
             {reports.length === 0 ? 'אין עדיין דוחות' : `${reports.length} דוחות`}
           </p>
         </div>
         <div className="actions">
-          <Link className="btn" href="/radon/detectors">
-            שיוך גלאים ללקוח
-          </Link>
           <form action={createBlankRadonReport}>
             <button type="submit" className="btn-primary">
               דוח חדש
@@ -37,6 +43,39 @@ export default function RadonPage() {
           לא הוגדרה תבנית ראדון פעילה — לא ניתן להפיק מסמכים. עברו ל
           <Link href="/templates">מסך התבניות</Link> והעלו קובץ.
         </div>
+      )}
+
+      {waiting.length > 0 && (
+        <section className="card">
+          <div className="card-head">
+            <h2>התקנות שממתינות לדוח</h2>
+          </div>
+          {readings === null && (
+            <div className="card-body">
+              <div className="notice warn">
+                לא ניתן לקרוא כרגע את תוצאות המעבדה. אפשר להפיק דוח ולהזין בו את התוצאות ידנית.
+              </div>
+            </div>
+          )}
+          {waiting.map((installation) => {
+            const withResult = installation.unreported.filter((n) => readings?.get(n)?.concentration.trim()).length;
+            return (
+              <div className="list-row" key={installation.id}>
+                <div className="grow">
+                  <div className="title">{installation.title || 'ללא לקוח'}</div>
+                  <div className="meta">
+                    {withResult} מתוך {installation.unreported.length} גלאים עם תוצאה
+                  </div>
+                </div>
+                <form action={draftReportFromInstallation.bind(null, installation.id)}>
+                  <button type="submit" className="btn-primary btn-sm">
+                    הפקת דוח
+                  </button>
+                </form>
+              </div>
+            );
+          })}
+        </section>
       )}
 
       <div className="card">

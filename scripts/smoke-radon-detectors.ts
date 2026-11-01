@@ -107,6 +107,74 @@ check(listCustomerDetectors(home.id).every((d) => d.reportId === ''), 'מחיק�
 const companyReport = loadRadonReport(createReportFromDetectors(office.id, new Map()))!;
 check(companyReport.siteKind === 'מקום עבודה' && companyReport.companyName === 'חברת בדיקה', 'חברה נבחנת כמקום עבודה');
 
+console.log('התקנה:');
+const { claimDetector, createInstallation, createReportFromInstallation, deleteInstallation, listInstallations, loadInstallation, saveInstallation } = await import('../src/lib/radon-installation-service');
+const { floorLabel, floorTitle, placementDate, InstallationSchema } = await import('../src/lib/radon-installation');
+const site = person('רות אבן');
+const installationId = createInstallation();
+check(loadInstallation(installationId)!.spaces.length === 0, 'התקנה חדשה נפתחת ריקה');
+check(floorLabel(0) === 'צמוד קרקע' && floorTitle(-2) === 'קומה 2-' && floorLabel(20) === '20', 'קומה 0 נקראת צמוד קרקע');
+check(placementDate('2026-05-06') === '06/05/26', 'תאריך ההתקנה בפורמט הדוח');
+check(InstallationSchema.safeParse({ spaces: [{ kind: 'room', floor: 21 }] }).success === false, 'קומה מחוץ לסקאלה נדחית');
+
+check(claimDetector(installationId, '', '300001').ok === false, 'בלי לקוח אין סריקה');
+const claimed = claimDetector(installationId, site.id, '0300001');
+check(claimed.ok && claimed.detectorNumber === '300001', 'סריקה מחזירה את המספר המנורמל');
+const taken = claimDetector(installationId, site.id, '100037');
+check(!taken.ok && taken.message.includes('יוסי לוי'), 'גלאי של לקוח אחר נדחה עם שם הלקוח', taken.ok ? '' : taken.message);
+const otherInstallation = createInstallation();
+check(!claimDetector(otherInstallation, site.id, '300001').ok, 'גלאי לא נרשם בשתי התקנות');
+
+const installed = (over = {}) => InstallationSchema.parse({
+  customerId: site.id, customerType: 'private', recipientName: 'רות אבן', phone: '050-1111111', email: 'ruth@example.com',
+  addressLine: 'הגפן 2', city: 'עכו', installedOn: '2026-05-06',
+  spaces: [
+    { kind: 'hall', name: 'אולם ספורט', floor: -1, rows: [
+      { position: 'מרכז האולם', detectorNumber: '300002' },
+      { position: 'קיר צפוני', detectorNumber: '300003' },
+      { position: 'כניסה מזרחית', detectorNumber: '' },
+    ] },
+    { kind: 'room', description: 'סלון', floor: 0, detectorNumber: '300001' },
+    { kind: 'room', description: 'מרתף', floor: -2, detectorNumber: '' },
+  ],
+  ...over,
+});
+saveInstallation(installationId, installed());
+const summary = listInstallations().find((i) => i.id === installationId)!;
+check(summary.title === 'רות אבן', 'כותרת ההתקנה היא שם הלקוח');
+check(summary.scanned === 3 && summary.spots === 5, '3 מתוך 5 מקומות עם גלאי');
+check(summary.unreported.length === 3, 'שלושה גלאים ממתינים לדוח');
+
+const firstDraft = loadRadonReport(createReportFromInstallation(installationId, new Map([reading('300001', '40', '10')])))!;
+check(firstDraft.detectors.map((d) => d.detectorNumber).join() === '300002,300003,300001', 'הדוח בסדר ההתקנה');
+const hallRow = firstDraft.detectors[0];
+check(hallRow.roomName === 'אולם ספורט — מרכז האולם' && hallRow.floor === '1-', 'שורת אולם עוברת לדוח', hallRow.roomName);
+const roomRow = firstDraft.detectors[2];
+check(roomRow.roomName === 'סלון' && roomRow.floor === 'צמוד קרקע', 'חדר וקומה עוברים לדוח');
+check(roomRow.placedAt === '06/05/26' && roomRow.concentration === '40', 'תאריך ההתקנה והתוצאה בשורה');
+check(firstDraft.recipientName === 'רות אבן' && firstDraft.phone === '050-1111111', 'פרטי הלקוח מההתקנה');
+let againDraft = '';
+try { createReportFromInstallation(installationId, new Map()); } catch (err) { againDraft = String(err); }
+check(againDraft !== '', 'אין דוח כפול מאותה התקנה');
+
+const fresh = createInstallation();
+const other = person('נועם גל');
+check(claimDetector(fresh, site.id, '300010').ok, 'סריקה בהתקנה נוספת');
+const room = (detectorNumber: string, description = 'משרד') => ({ kind: 'room', description, floor: 2, detectorNumber });
+saveInstallation(fresh, installed({ spaces: [room('300010')] }));
+check(!claimDetector(createInstallation(), other.id, '300010').ok, 'הגלאי תפוס גם ללקוח אחר');
+saveInstallation(fresh, installed({ customerId: other.id, spaces: [room('300010', 'מחסן')] }));
+const moved = listInstallations().find((i) => i.id === fresh)!;
+check(moved.unreported.join() === '300010', 'החלפת לקוח משאירה את הגלאי בהתקנה');
+check(assignDetectors(site.id, ['300010']).elsewhere[0]?.customerName === 'נועם גל', 'החלפת לקוח מעבירה את הגלאי');
+saveInstallation(fresh, installed({ customerId: other.id, spaces: [] }));
+check(claimDetector(otherInstallation, site.id, '300010').ok, 'מחיקת חדר משחררת את הגלאי');
+saveInstallation(fresh, installed({ customerId: other.id, spaces: [room('300011')] }));
+deleteInstallation(fresh);
+check(assignDetectors(site.id, ['300011']).added.length === 1, 'מחיקת התקנה משחררת את הגלאים');
+deleteInstallation(installationId);
+check(listCustomerDetectors(site.id).some((d) => d.detectorNumber === '300001' && d.reportId !== ''), 'גלאי שכבר בדוח נשאר רשום');
+
 deleteCustomer(home.id);
 check(assignDetectors(office.id, ['100012']).added.length === 1, 'מחיקת לקוח משחררת את הגלאים שלו');
 

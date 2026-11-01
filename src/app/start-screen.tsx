@@ -19,9 +19,18 @@ import Link from 'next/link';
  * sits beside the date and the site that identify it.
  */
 export function StartScreen() {
-  const kinds = [
+  const kinds: Array<{
+    key: string;
+    title: string;
+    blurb: string;
+    icon: string;
+    newHref: string;
+    newLabel?: string;
+    listHref: string;
+    listLabel?: string;
+  }> = [
     {
-      key: 'radiation' as const,
+      key: 'radiation',
       title: 'דוח קרינה',
       blurb: 'מדידות שדה מגנטי ELF וצפיפות הספק RF',
       icon: '📡',
@@ -29,15 +38,17 @@ export function StartScreen() {
       listHref: '/reports',
     },
     {
-      key: 'radon' as const,
-      title: 'דוח ראדון',
-      blurb: 'גלאים, תוצאות מעבדה ורמות פעולה',
+      key: 'radon',
+      title: 'ראדון',
+      blurb: 'התקנת גלאים בשטח, והפקת דוחות מתוצאות המעבדה',
       icon: '🧪',
-      newHref: '/radon/new',
+      newHref: '/radon/installations/new',
+      newLabel: 'התקנת גלאים',
       listHref: '/radon',
+      listLabel: 'הפקת דוחות',
     },
     {
-      key: 'asbestos' as const,
+      key: 'asbestos',
       title: 'דוח אסבסט',
       blurb: 'חוות דעת — סקר ויזואלי, ממצאים ותמונות',
       icon: '🏗️',
@@ -45,7 +56,7 @@ export function StartScreen() {
       listHref: '/asbestos',
     },
     {
-      key: 'mold' as const,
+      key: 'mold',
       title: 'דוח עובשים',
       blurb: 'דיגום אוויר ומשטח, תוצאות מעבדה ובדיקת לחות',
       icon: '🧫',
@@ -53,7 +64,7 @@ export function StartScreen() {
       listHref: '/mold',
     },
     {
-      key: 'iaq' as const,
+      key: 'iaq',
       title: 'דוח איכות אוויר',
       blurb: 'מדידות תוך-מבניות: CO₂, CO, NO₂, SO₂, VOC, פורמלדהיד, טמפ׳ ולחות',
       icon: '💨',
@@ -80,14 +91,14 @@ export function StartScreen() {
               redirects, so prefetching it would create one for every card the
               router happened to look at. */}
           <a className="btn-primary start-action" href={kind.newHref}>
-            דוח חדש
+            {kind.newLabel ?? 'דוח חדש'}
           </a>
 
           {/* A button rather than the small link this was: finding an existing report
               is half of what the screen is for, and a line of grey text under two
               large targets read as a footnote. */}
           <Link className="btn start-action start-secondary" href={kind.listHref} prefetch={false}>
-            כל הדוחות
+            {kind.listLabel ?? 'כל הדוחות'}
           </Link>
         </section>
       ))}

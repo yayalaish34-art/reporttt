@@ -146,7 +146,9 @@ export function inspectorsMissing(report: Report): string | null {
 // ── Radon ───────────────────────────────────────────────────────────
 
 /** "לקוח" in the radon report — the same recipient block, same reasoning. */
-export function radonCustomerMissing(report: RadonReport): string | null {
+export function radonCustomerMissing(
+  report: Pick<RadonReport, 'customerType' | 'recipientName' | 'companyName' | 'addressLine' | 'city' | 'phone' | 'email'>,
+): string | null {
   const isCompany = report.customerType !== 'private';
   return missing([
     report.recipientName.trim() === '' ? (isCompany ? 'איש הקשר' : 'שם הלקוח') : null,

@@ -1377,12 +1377,15 @@ function GroupHeading({
  * table opens and the rest fold to their heading, which still shows the kind,
  * the title and the row count — enough to find the one you want.
  */
-function ProtocolBlock({
+export function ProtocolBlock({
   kind,
   index,
   total,
   title,
   rowCount,
+  summary,
+  removePrompt,
+  badge,
   open,
   onToggle,
   onMove,
@@ -1394,6 +1397,11 @@ function ProtocolBlock({
   total: number;
   title: string;
   rowCount: number;
+  /** Replaces the row count on the heading, for a block that is not a table of rows. */
+  summary?: string;
+  removePrompt?: string;
+  /** Replaces the kind and number on the heading's badge. */
+  badge?: string;
   open: boolean;
   onToggle: () => void;
   onMove: (to: number) => void;
@@ -1413,7 +1421,7 @@ function ProtocolBlock({
           {open ? '▾' : '▸'}
         </button>
         <span className="badge">
-          {kind} {index + 1}
+          {badge ?? `${kind} ${index + 1}`}
         </span>
         <strong
           onClick={onToggle}
@@ -1421,7 +1429,7 @@ function ProtocolBlock({
         >
           {title.trim() || `טבלת ${kind} ${index + 1}`}
         </strong>
-        <span className="hint">{rowCount} שורות</span>
+        <span className="hint">{summary ?? `${rowCount} שורות`}</span>
         <span className="spacer" style={{ display: 'flex', gap: 6 }}>
           <button type="button" className="btn-sm" disabled={index === 0} onClick={() => onMove(index - 1)} title="הזזה למעלה">
             ↑
@@ -1433,7 +1441,7 @@ function ProtocolBlock({
             type="button"
             className="btn-danger btn-sm"
             onClick={() => {
-              if (confirm(`למחוק את הטבלה על כל ${rowCount} שורות המדידה שבה?`)) onRemove();
+              if (confirm(removePrompt ?? `למחוק את הטבלה על כל ${rowCount} שורות המדידה שבה?`)) onRemove();
             }}
           >
             מחיקה

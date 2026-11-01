@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { BarcodeScanner } from '../../barcode-scanner';
+import { BarcodeScanner, beep } from '../../barcode-scanner';
 import { useCameraSupported } from '../../camera-capture';
 import { LabScanPanel } from '../../radon/[id]/lab-scan';
 import {
@@ -25,6 +25,9 @@ import {
 export interface DetectorView {
   detectorNumber: string;
   reportId: string;
+  /** Where an installation placed it; empty for one scanned straight onto the customer. */
+  roomName: string;
+  installationId: string;
   concentration: string;
   uncertainty: string;
 }
@@ -37,21 +40,6 @@ const SLIDER_MAX = 100;
 
 /** How long the scanning must pause before the card re-reads results from the server. */
 const REFRESH_AFTER_MS = 1500;
-
-/** A short tone, because whoever is scanning is looking at the detector and not the screen. */
-function beep(ok: boolean) {
-  try {
-    const audio = new AudioContext();
-    const tone = audio.createOscillator();
-    tone.frequency.value = ok ? 1200 : 300;
-    tone.connect(audio.destination);
-    tone.start();
-    tone.stop(audio.currentTime + (ok ? 0.08 : 0.3));
-    tone.onended = () => void audio.close();
-  } catch {
-    /* no sound available; the message on screen says the same */
-  }
-}
 
 function describe(outcome: AssignOutcome): Message {
   const parts: string[] = [];
@@ -115,7 +103,7 @@ export function RadonDetectorsSection({
       setDetectors((current) => {
         const added = outcome.added
           .filter((n) => !current.some((d) => d.detectorNumber === n))
-          .map((detectorNumber) => ({ detectorNumber, reportId: '', concentration: '', uncertainty: '' }));
+          .map((detectorNumber) => ({ detectorNumber, reportId: '', roomName: '', installationId: '', concentration: '', uncertainty: '' }));
         return [...current, ...added].sort((a, b) => Number(a.detectorNumber) - Number(b.detectorNumber));
       });
       const next = describe(outcome);
@@ -327,6 +315,7 @@ export function RadonDetectorsSection({
               <thead>
                 <tr>
                   <th>מס׳ גלאי</th>
+                  <th>חדר</th>
                   <th>ריכוז [Bq/m³]</th>
                   <th>אי ודאות [%]</th>
                   <th>מצב</th>
@@ -341,6 +330,7 @@ export function RadonDetectorsSection({
                   return (
                     <tr key={detector.detectorNumber}>
                       <td className="ltr">{detector.detectorNumber}</td>
+                      <td>{detector.roomName || '—'}</td>
                       <td className="ltr">{detector.concentration || '—'}</td>
                       <td className="ltr">{detector.uncertainty || '—'}</td>
                       <td>
@@ -362,7 +352,7 @@ export function RadonDetectorsSection({
                         )}
                       </td>
                       <td>
-                        {!detector.reportId && (
+                        {!detector.reportId && !detector.installationId && (
                           <button
                             type="button"
                             className="btn-danger btn-sm"

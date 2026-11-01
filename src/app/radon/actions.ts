@@ -22,6 +22,16 @@ import {
 } from '@/lib/radon-detectors';
 import { findReadings, saveReadings } from '@/lib/radon-readings-store';
 import { refreshCrmCustomer } from '@/lib/crm-import';
+import {
+  claimDetector,
+  createInstallation,
+  createReportFromInstallation,
+  deleteInstallation,
+  loadInstallation,
+  saveInstallation,
+  type ClaimResult,
+} from '@/lib/radon-installation-service';
+import { InstallationSchema, installationSpots } from '@/lib/radon-installation';
 
 export interface RadonActionResult {
   ok: boolean;
@@ -222,6 +232,54 @@ export async function draftCustomerRadonReport(
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : 'הפקת הדוח נכשלה' };
   }
+}
+
+// ── Detector installations ──────────────────────────────────────────
+
+/** A new installation's id, without touching the cache — see `createBlankRadonReportId`. */
+export async function createInstallationId(): Promise<string> {
+  return createInstallation();
+}
+
+/** The autosave behind the installation. Not revalidated: this runs every few seconds. */
+export async function persistInstallation(id: string, data: unknown): Promise<{ ok: boolean; message: string }> {
+  const parsed = InstallationSchema.safeParse(data);
+  if (!parsed.success) return { ok: false, message: 'ההתקנה לא נשמרה' };
+  try {
+    saveInstallation(id, parsed.data);
+    return { ok: true, message: '' };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : 'שמירה נכשלה' };
+  }
+}
+
+/** Reserves a scanned detector for this installation, or says who already holds it. */
+export async function scanInstallationDetector(id: string, customerId: string, code: string): Promise<ClaimResult> {
+  return claimDetector(id, customerId, code);
+}
+
+export async function removeInstallation(id: string): Promise<void> {
+  deleteInstallation(id);
+  revalidatePath('/radon/installations');
+  revalidatePath('/radon');
+}
+
+/** Drafts the report from an installation and opens it. A second press finds nothing left and stays on the list. */
+export async function draftReportFromInstallation(id: string): Promise<void> {
+  const installation = loadInstallation(id);
+  if (!installation) redirect('/radon');
+
+  const numbers = installationSpots(installation).map((spot) => spot.detectorNumber).filter(Boolean);
+  const readings = (await findReadings(numbers)) ?? new Map();
+
+  let reportId = '';
+  try {
+    reportId = createReportFromInstallation(id, readings);
+  } catch (err) {
+    console.error('הפקת דוח מההתקנה נכשלה', err);
+  }
+  revalidatePath('/radon');
+  redirect(reportId ? `/radon/${reportId}` : '/radon');
 }
 
 /** The stored report, for a client that needs to re-read after a server change. */

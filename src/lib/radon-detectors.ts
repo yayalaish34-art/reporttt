@@ -19,6 +19,11 @@ export interface AssignedDetector {
   /** The report this detector was drafted into, empty until then. */
   reportId: string;
   assignedAt: string;
+  /** The installation that placed it, empty for one scanned straight onto the customer. */
+  installationId: string;
+  roomName: string;
+  floor: string;
+  placedAt: string;
 }
 
 export interface AssignOutcome {
@@ -31,20 +36,55 @@ export interface AssignOutcome {
   invalid: string[];
 }
 
-export function listCustomerDetectors(customerId: string): AssignedDetector[] {
-  const rows = db()
-    .prepare(
-      `SELECT detector_number, customer_id, report_id, assigned_at
-         FROM radon_detectors WHERE customer_id = ?
-        ORDER BY CAST(detector_number AS INTEGER)`,
-    )
-    .all(customerId) as Array<Record<string, unknown>>;
-  return rows.map((row) => ({
+/** Who a report drafted from detectors is addressed to. */
+export type Recipient = Pick<
+  RadonReport,
+  'customerId' | 'customerType' | 'recipientName' | 'companyName' | 'addressLine' | 'city' | 'phone' | 'email'
+>;
+
+export function recipientOf(customer: Customer): Recipient {
+  return {
+    customerId: customer.id,
+    customerType: customer.kind,
+    recipientName: customer.contactName,
+    companyName: customer.kind === 'company' ? customer.companyName : '',
+    addressLine: customer.addressLine,
+    city: customer.city,
+    phone: customer.phone,
+    email: customer.email,
+  };
+}
+
+const COLUMNS = 'detector_number, customer_id, report_id, assigned_at, installation_id, room_name, floor, placed_at';
+
+export function toDetector(row: Record<string, unknown>): AssignedDetector {
+  return {
     detectorNumber: String(row.detector_number),
     customerId: String(row.customer_id),
     reportId: String(row.report_id ?? ''),
     assignedAt: String(row.assigned_at),
-  }));
+    installationId: String(row.installation_id ?? ''),
+    roomName: String(row.room_name ?? ''),
+    floor: String(row.floor ?? ''),
+    placedAt: String(row.placed_at ?? ''),
+  };
+}
+
+export function listCustomerDetectors(customerId: string): AssignedDetector[] {
+  const rows = db()
+    .prepare(
+      `SELECT ${COLUMNS} FROM radon_detectors WHERE customer_id = ?
+        ORDER BY CAST(detector_number AS INTEGER)`,
+    )
+    .all(customerId) as Array<Record<string, unknown>>;
+  return rows.map(toDetector);
+}
+
+export function listInstallationDetectors(installationId: string): AssignedDetector[] {
+  const rows = db()
+    .prepare(`SELECT ${COLUMNS} FROM radon_detectors WHERE installation_id = ?`)
+    .all(installationId) as Array<Record<string, unknown>>;
+  return rows.map(toDetector);
 }
 
 /**
@@ -94,10 +134,16 @@ export function assignDetectors(customerId: string, numbers: string[]): AssignOu
   return outcome;
 }
 
-/** Takes detectors off a customer's list. One already in a report stays where it is. */
+/**
+ * Takes detectors off a customer's list.
+ *
+ * One already in a report stays, and so does one placed by an installation: its room
+ * still says it is there, and that is where it has to be removed from.
+ */
 export function releaseDetectors(customerId: string, numbers: string[]): void {
   const remove = db().prepare(
-    `DELETE FROM radon_detectors WHERE customer_id = ? AND detector_number = ? AND report_id = ''`,
+    `DELETE FROM radon_detectors
+      WHERE customer_id = ? AND detector_number = ? AND report_id = '' AND installation_id = ''`,
   );
   for (const number of numbers) remove.run(customerId, detectorKey(number));
 }
@@ -113,45 +159,59 @@ export function releaseDetectors(customerId: string, numbers: string[]): void {
  * rows up as it opens and asks the surveyor for a figure, as it does for a typed number.
  */
 export function draftReportFromDetectors(
-  customer: Customer,
-  numbers: string[],
+  recipient: Recipient,
+  detectors: AssignedDetector[],
   readings: Map<string, StoredReading>,
   reference: string,
 ): RadonReport {
-  const isCompany = customer.kind === 'company';
   const base = RadonReportSchema.parse({
+    ...recipient,
+    recipientName: recipient.recipientName || '—',
     referenceNumber: reference,
     reportDate: new Date().toISOString().slice(0, 10),
-    customerId: customer.id,
-    customerType: customer.kind,
-    recipientName: customer.contactName || '—',
-    companyName: isCompany ? customer.companyName : '',
-    addressLine: customer.addressLine,
-    city: customer.city,
-    phone: customer.phone,
-    email: customer.email,
-    siteKind: isCompany ? 'מקום עבודה' : 'מגורים',
+    siteKind: recipient.customerType === 'company' ? 'מקום עבודה' : 'מגורים',
     detectors: [],
   });
 
-  const detectors = numbers.map((detectorNumber): DetectorRow => {
-    const row = { ...newDetectorRow(base), detectorNumber };
-    const reading = readings.get(detectorNumber);
+  const rows = detectors.map((detector): DetectorRow => {
+    const row: DetectorRow = {
+      ...newDetectorRow(base),
+      detectorNumber: detector.detectorNumber,
+      roomName: detector.roomName,
+      floor: detector.floor,
+      placedAt: detector.placedAt,
+    };
+    const reading = readings.get(detector.detectorNumber);
     if (!reading || reading.concentration.trim() === '' || implausibleUncertainty(reading.uncertainty)) {
       return row;
     }
     return { ...row, concentration: reading.concentration, uncertainty: reading.uncertainty };
   });
 
-  return { ...base, detectors };
+  return { ...base, detectors: rows };
 }
 
 /**
- * Drafts a report from the customer's detectors that are not in one yet.
+ * Stores the draft and marks its detectors.
  *
  * Marking them is what makes a second press safe: it finds nothing left to draft rather
  * than producing a second report for the same detectors.
  */
+export function createDraftReport(
+  recipient: Recipient,
+  detectors: AssignedDetector[],
+  readings: Map<string, StoredReading>,
+): string {
+  if (detectors.length === 0) throw new Error('אין גלאים שעדיין לא נכללו בדוח.');
+
+  const id = createRadonReport(draftReportFromDetectors(recipient, detectors, readings, nextRadonReference()));
+
+  const link = db().prepare('UPDATE radon_detectors SET report_id = ? WHERE detector_number = ?');
+  for (const detector of detectors) link.run(id, detector.detectorNumber);
+  return id;
+}
+
+/** Drafts a report from the customer's detectors that are not in one yet. */
 export function createReportFromDetectors(
   customerId: string,
   readings: Map<string, StoredReading>,
@@ -159,14 +219,6 @@ export function createReportFromDetectors(
   const customer = loadCustomer(customerId);
   if (!customer) throw new Error(`לקוח ${customerId} לא נמצא`);
 
-  const numbers = listCustomerDetectors(customerId)
-    .filter((detector) => detector.reportId === '')
-    .map((detector) => detector.detectorNumber);
-  if (numbers.length === 0) throw new Error('אין גלאים שעדיין לא נכללו בדוח.');
-
-  const id = createRadonReport(draftReportFromDetectors(customer, numbers, readings, nextRadonReference()));
-
-  const link = db().prepare('UPDATE radon_detectors SET report_id = ? WHERE detector_number = ?');
-  for (const number of numbers) link.run(id, number);
-  return id;
+  const detectors = listCustomerDetectors(customerId).filter((detector) => detector.reportId === '');
+  return createDraftReport(recipientOf(customer), detectors, readings);
 }
