@@ -89,21 +89,57 @@ export function RadonEditor({ id, initial }: { id: string; initial: RadonReport 
 
       setReport((r) => ({
         ...r,
-        detectors: r.detectors.map((row, i) =>
-          i === index
-            ? {
-                ...row,
-                concentration: row.concentration.trim() || reading.concentration,
-                uncertainty: row.uncertainty.trim() || reading.uncertainty,
-              }
-            : row,
-        ),
+        detectors: r.detectors.map((row, i) => {
+          // A concentration typed by hand is a different measurement, and the
+          // laboratory's uncertainty does not describe it.
+          const typed = row.concentration.trim();
+          if (i !== index || (typed !== '' && typed !== reading.concentration)) return row;
+          return {
+            ...row,
+            concentration: typed || reading.concentration,
+            uncertainty: row.uncertainty.trim() || reading.uncertainty,
+          };
+        }),
       }));
       setDirty(true);
       setLookups((s) => ({ ...s, [index]: 'found' }));
     } catch {
       setLookups((s) => ({ ...s, [index]: 'none' }));
     }
+  };
+
+  /**
+   * Rows still missing a result are looked up as the report opens.
+   *
+   * A report drafted from a customer's detectors usually opens before every result is
+   * back, and this picks up what arrived since. It is also what brings back the flag on
+   * an uncertainty too wide to use, which is not stored on the row. One at a time, since
+   * each lookup is its own connection to the store.
+   */
+  useEffect(() => {
+    void (async () => {
+      for (const [index, row] of initial.detectors.entries()) {
+        if (row.detectorNumber.trim() !== '' && row.uncertainty.trim() === '') {
+          await lookUpDetector(index, row.detectorNumber);
+        }
+      }
+    })();
+    // Once per opening; after that a lookup runs when a number is typed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** The repeating cells of a survey, copied to the rows where they are still empty. */
+  const fillFromFirstRow = () => {
+    const [first] = report.detectors;
+    if (!first) return;
+    update({
+      detectors: report.detectors.map((row) => ({
+        ...row,
+        floor: row.floor.trim() || first.floor,
+        placedAt: row.placedAt.trim() || first.placedAt,
+        collectedAt: row.collectedAt.trim() || first.collectedAt,
+      })),
+    });
   };
 
   /**
@@ -315,6 +351,12 @@ export function RadonEditor({ id, initial }: { id: string; initial: RadonReport 
         /* The rows may stand half-written — the laboratory answers weeks later —
            but every detector needs the room it sat in. See `radonDetectorsMissing`. */
         blocker: (() => {
+          // A blank uncertainty would judge the reading on its own, so a figure the
+          // laboratory printed too wide has to be replaced before moving on.
+          const undecided = report.detectors.findIndex(
+            (row, i) => lookups[i] === 'wide' && row.uncertainty.trim() === '',
+          );
+          if (undecided >= 0) return `חסר כדי להמשיך: גלאי ${undecided + 1}: אי ודאות`;
           const gaps = radonDetectorsMissing(report);
           if (!gaps) return undefined;
           return gaps.endsWith('כדי להמשיך.') ? gaps : `חסר כדי להמשיך: ${gaps}`;
@@ -363,6 +405,11 @@ export function RadonEditor({ id, initial }: { id: string; initial: RadonReport 
         >
           הוספת גלאי
         </button>
+        {report.detectors.length > 1 && (
+          <button type="button" className="btn btn-sm" onClick={fillFromFirstRow}>
+            העתקת קומה ותאריכים מהשורה הראשונה לשורות הריקות
+          </button>
+        )}
       </div>
         <div>
           <div className="table-scroll">

@@ -115,6 +115,8 @@ export function saveRadonReport(id: string, report: DraftRadonReport): void {
 
 export function deleteRadonReport(id: string): void {
   db().prepare('DELETE FROM radon_reports WHERE id = ?').run(id);
+  // Its detectors go back to waiting for a report rather than pointing at nothing.
+  db().prepare(`UPDATE radon_detectors SET report_id = '' WHERE report_id = ?`).run(id);
 }
 
 // ── Generation ──────────────────────────────────────────────────────

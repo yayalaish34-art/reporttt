@@ -116,6 +116,34 @@ export async function saveReadings(readings: StoredReading[]): Promise<{ saved: 
   }
 }
 
+/**
+ * Looks up a customer's whole batch of detectors in one query.
+ *
+ * Returns null when the store cannot answer, which is not the same as "no results
+ * yet" — the customer's card says which of the two it is.
+ */
+export async function findReadings(detectorNumbers: string[]): Promise<Map<string, StoredReading> | null> {
+  if (!readingsStoreConfigured()) return null;
+  if (detectorNumbers.length === 0) return new Map();
+
+  let client: Client | null = null;
+  try {
+    client = await connect();
+    await ensureTable(client);
+    const { rows } = await client.query(
+      `SELECT "detectorNumber", "concentration", "uncertainty", "status", "reportId", "customerId"
+         FROM "${TABLE}" WHERE "detectorNumber" = ANY($1)`,
+      [detectorNumbers],
+    );
+    return new Map((rows as StoredReading[]).map((row) => [row.detectorNumber, row]));
+  } catch (err) {
+    console.error('קריאת גלאים מ-Supabase נכשלה', err);
+    return null;
+  } finally {
+    await client?.end().catch(() => undefined);
+  }
+}
+
 /** Looks a detector up, for a report written months after the scan. */
 export async function findReading(detectorNumber: string): Promise<StoredReading | null> {
   if (!readingsStoreConfigured()) return null;

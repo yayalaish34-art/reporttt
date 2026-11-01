@@ -115,6 +115,22 @@ function migrate(handle: DatabaseSync): void {
       updated_at   TEXT NOT NULL
     );
 
+    /**
+     * Which customer each radon detector went out to.
+     *
+     * Keyed by the detector number alone: a CR-39 detector is developed once, so one
+     * number belongs to one customer, and a second assignment is a mistake to report.
+     * report_id is the report the detector was drafted into, empty until then.
+     */
+    CREATE TABLE IF NOT EXISTS radon_detectors (
+      detector_number TEXT PRIMARY KEY,
+      customer_id     TEXT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+      report_id       TEXT NOT NULL DEFAULT '',
+      assigned_at     TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_radon_detectors_customer ON radon_detectors(customer_id);
+
     CREATE TABLE IF NOT EXISTS asbestos_reports (
       id           TEXT PRIMARY KEY,
       reference    TEXT NOT NULL DEFAULT '',

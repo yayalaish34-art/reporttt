@@ -22,6 +22,40 @@ import { RADON_THRESHOLDS, RADON_VERDICTS, type DetectorRow, type RadonReport } 
  */
 export const MAX_PLAUSIBLE_UNCERTAINTY = 22;
 
+/** How many detectors a scanned series covers unless the surveyor says otherwise. */
+export const DEFAULT_SERIES_LENGTH = 25;
+
+/** The most detectors one series may add, so a slip of the keyboard cannot add thousands. */
+export const MAX_SERIES_LENGTH = 500;
+
+/**
+ * A detector number in the form the laboratory's readings are stored under.
+ *
+ * Digits only and no leading zeros, so a scanned barcode and a number read off the
+ * laboratory's screen land on the same key.
+ */
+export function detectorKey(raw: string): string {
+  return String(raw ?? '').replace(/\D+/g, '').replace(/^0+(?=\d)/, '');
+}
+
+/**
+ * Whether a scan looks like a detector number.
+ *
+ * The ceiling is what keeps the series arithmetic exact, and it also turns away a
+ * scan of some other long code on the same box.
+ */
+export function isDetectorKey(key: string): boolean {
+  return /^\d{3,15}$/.test(key);
+}
+
+/** The scanned number and the ones after it, `count` numbers in all. */
+export function detectorSeries(start: string, count: number): string[] {
+  const key = detectorKey(start);
+  if (!isDetectorKey(key)) return [];
+  const length = Math.min(Math.max(Math.trunc(count) || 0, 0), MAX_SERIES_LENGTH);
+  return Array.from({ length }, (_, i) => String(Number(key) + i));
+}
+
 /** True when the uncertainty is too wide to use as printed. */
 export function implausibleUncertainty(uncertainty: string): boolean {
   const percent = toNumber(uncertainty);

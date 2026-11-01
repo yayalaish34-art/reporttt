@@ -21,6 +21,9 @@ export default function RadonPage() {
           </p>
         </div>
         <div className="actions">
+          <Link className="btn" href="/radon/detectors">
+            שיוך גלאים ללקוח
+          </Link>
           <form action={createBlankRadonReport}>
             <button type="submit" className="btn-primary">
               דוח חדש

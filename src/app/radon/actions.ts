@@ -13,6 +13,15 @@ import {
 import { crmApiConfigured, fileReportOnCustomerCard } from '@/lib/crm-filing';
 import { DraftRadonReportSchema, RadonReportSchema, type RadonReport } from '@/lib/radon-schema';
 import { newDetectorRow } from '@/lib/radon-rules';
+import {
+  assignDetectors,
+  createReportFromDetectors,
+  listCustomerDetectors,
+  releaseDetectors,
+  type AssignOutcome,
+} from '@/lib/radon-detectors';
+import { findReadings, saveReadings } from '@/lib/radon-readings-store';
+import { refreshCrmCustomer } from '@/lib/crm-import';
 
 export interface RadonActionResult {
   ok: boolean;
@@ -159,6 +168,59 @@ export async function finishRadonReport(id: string, data: unknown): Promise<Rado
       ok: false,
       error: `הדוח נשמר, אך התיוק בכרטיס הלקוח נכשל: ${err instanceof Error ? err.message : 'שגיאה'}`,
     };
+  }
+}
+
+/**
+ * Adds scanned detectors to a customer.
+ *
+ * `revalidatePath` is deliberately not called: this runs once per scan, and the card
+ * refreshes itself when the scanning pauses.
+ */
+export async function addCustomerDetectors(customerId: string, numbers: string[]): Promise<AssignOutcome> {
+  return assignDetectors(customerId, numbers);
+}
+
+export async function removeCustomerDetectors(customerId: string, numbers: string[]): Promise<void> {
+  releaseDetectors(customerId, numbers);
+  revalidatePath(`/customers/${customerId}`);
+}
+
+/**
+ * Stores readings confirmed on a customer's card, with any uncertainty the surveyor corrected.
+ *
+ * The scan itself already stored what it read. This is what replaces a figure printed too
+ * wide to use, so the customer's report is drafted from the corrected one.
+ */
+export async function confirmDetectorReadings(
+  customerId: string,
+  rows: Array<{ detectorNumber: string; concentration: string; uncertainty: string; status: string }>,
+): Promise<RadonActionResult> {
+  const { error } = await saveReadings(rows.map((row) => ({ ...row, customerId })));
+  revalidatePath(`/customers/${customerId}`);
+  return error ? { ok: false, error } : { ok: true };
+}
+
+/**
+ * Drafts the customer's report from their detectors and whatever readings have arrived.
+ *
+ * Stops at a draft, for the reason the laboratory scan does: readings need a look before
+ * they reach a client, and the rooms are known only to whoever placed the detectors.
+ */
+export async function draftCustomerRadonReport(
+  customerId: string,
+): Promise<RadonActionResult & { reportId?: string }> {
+  try {
+    // The address is usually completed in the CRM after the copy here was taken.
+    await refreshCrmCustomer(customerId);
+    const numbers = listCustomerDetectors(customerId).map((detector) => detector.detectorNumber);
+    const readings = (await findReadings(numbers)) ?? new Map();
+    const reportId = createReportFromDetectors(customerId, readings);
+    revalidatePath('/radon');
+    revalidatePath(`/customers/${customerId}`);
+    return { ok: true, reportId };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'הפקת הדוח נכשלה' };
   }
 }
 

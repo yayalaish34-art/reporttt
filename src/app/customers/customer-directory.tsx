@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, useTransition } from 'react';
+import Link from 'next/link';
 import type { Customer } from '@/lib/customer-service';
 import {
   findCustomers,
@@ -146,7 +147,7 @@ export function CustomerDirectory({ customers }: { customers: Customer[] }) {
                   <th>עיר</th>
                   <th>טלפון</th>
                   <th>דוא״ל</th>
-                  <th style={{ width: 120 }} />
+                  <th style={{ width: 210 }} />
                 </tr>
               </thead>
               <tbody>
@@ -165,6 +166,9 @@ export function CustomerDirectory({ customers }: { customers: Customer[] }) {
                     <td className="mono">{customer.phone || '—'}</td>
                     <td className="mono">{customer.email || '—'}</td>
                     <td style={{ display: 'flex', gap: 6 }}>
+                      <Link className="btn btn-sm" href={`/customers/${customer.id}`} prefetch={false}>
+                        גלאי ראדון
+                      </Link>
                       <button
                         type="button"
                         className="btn-sm"
