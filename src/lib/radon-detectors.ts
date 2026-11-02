@@ -168,8 +168,10 @@ export function draftReportFromDetectors(
   detectors: AssignedDetector[],
   readings: Map<string, StoredReading>,
   reference: string,
+  extras: Partial<RadonReport> = {},
 ): RadonReport {
   const base = RadonReportSchema.parse({
+    ...extras,
     ...recipient,
     recipientName: recipient.recipientName || '—',
     referenceNumber: reference,
@@ -209,10 +211,11 @@ export function createDraftReport(
   recipient: Recipient,
   detectors: AssignedDetector[],
   readings: Map<string, StoredReading>,
+  extras: Partial<RadonReport> = {},
 ): string {
   if (detectors.length === 0) throw new Error('אין גלאים שעדיין לא נכללו בדוח.');
 
-  const id = createRadonReport(draftReportFromDetectors(recipient, detectors, readings, nextRadonReference()));
+  const id = createRadonReport(draftReportFromDetectors(recipient, detectors, readings, nextRadonReference(), extras));
 
   const link = db().prepare('UPDATE radon_detectors SET report_id = ? WHERE detector_number = ?');
   for (const detector of detectors) link.run(id, detector.detectorNumber);

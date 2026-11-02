@@ -16,6 +16,7 @@ import {
   placementDate,
   type Installation,
 } from './radon-installation';
+import { printedAnswers } from './radon-questions';
 import { detectorKey, isDetectorKey } from './radon-rules';
 import type { StoredReading } from './radon-readings-store';
 import { customerNameOf } from './report-title';
@@ -28,6 +29,8 @@ export interface InstallationSummary {
   title: string;
   testLength: string;
   installedOn: string;
+  wattStart: string;
+  wattEnd: string;
   updatedAt: string;
   /** Spots with a detector scanned, out of all the spots added. */
   scanned: number;
@@ -61,6 +64,8 @@ export function listInstallations(): InstallationSummary[] {
       title: customerNameOf(installation),
       testLength: installation.testLength,
       installedOn: installation.installedOn,
+      wattStart: installation.wattStart,
+      wattEnd: installation.wattEnd,
       updatedAt: row.updated_at,
       scanned: spots.filter((spot) => spot.detectorNumber !== '').length,
       spots: spots.length,
@@ -232,5 +237,5 @@ export function createReportFromInstallation(id: string, readings: Map<string, S
     .filter((detector) => detector.reportId === '')
     .sort((a, b) => order.indexOf(a.detectorNumber) - order.indexOf(b.detectorNumber));
 
-  return createDraftReport(installation, detectors, readings);
+  return createDraftReport(installation, detectors, readings, printedAnswers(installation.answers));
 }

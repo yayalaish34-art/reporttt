@@ -65,6 +65,8 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
                   {placementDate(installation.installedOn)} עד{' '}
                   {placementDate(installationEnd(installation.testLength, installation.installedOn))} ·{' '}
                   {installation.scanned} מתוך {installation.spots} מקומות עם גלאי
+                  {installation.wattStart && ` · ואט בתחילה: ${installation.wattStart}`}
+                  {installation.wattEnd && ` · ואט בסיום: ${installation.wattEnd}`}
                 </div>
               </div>
             </div>

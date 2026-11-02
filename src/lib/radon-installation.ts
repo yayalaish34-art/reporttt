@@ -54,6 +54,11 @@ export const InstallationSchema = z.object({
    * whose 72 hours are counted from the hour. Israel time, as typed.
    */
   installedOn: text.default(''),
+  /** The meter's reading at each end of a short test. Optional, and not printed in the report. */
+  wattStart: text.default(''),
+  wattEnd: text.default(''),
+  /** The survey questions, by the report field each answer prints in — see `radon-questions`. */
+  answers: z.record(z.object({ answer: text.default(''), detail: text.default('') })).default({}),
   spaces: z.array(z.discriminatedUnion('kind', [InstalledRoomSchema, InstalledHallSchema])).default([]),
 });
 

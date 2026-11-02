@@ -18,9 +18,13 @@ const { createCustomer, deleteCustomer } = await import('../src/lib/customer-ser
 const { assignDetectors, createReportFromDetectors, listCustomerDetectors, releaseDetectors } = await import(
   '../src/lib/radon-detectors'
 );
-const { deleteRadonReport, loadRadonReport } = await import('../src/lib/radon-service');
+const { deleteRadonReport, generateRadonReport, loadRadonReport, radonDocumentText } = await import('../src/lib/radon-service');
+const { RADON_QUESTIONS, printedAnswers, unansweredQuestions } = await import('../src/lib/radon-questions');
+const { activeTemplate, storeTemplate } = await import('../src/lib/docx/template-store');
+const { readFileSync } = await import('node:fs');
+const { createHash } = await import('node:crypto');
 const { detectorKey, detectorSeries, isWholeDetectorEntry, radonVerdict, withDetectorPrefix } = await import('../src/lib/radon-rules');
-const { RADON_VERDICTS } = await import('../src/lib/radon-schema');
+const { RADON_VERDICTS, RadonReportSchema } = await import('../src/lib/radon-schema');
 const { db } = await import('../src/lib/db');
 
 let failures = 0;
@@ -211,6 +215,61 @@ check(radonVerdict(shortRow) === RADON_VERDICTS.shortOk, 'קצר טווח תקי
 
 deleteInstallation(installationId);
 check(listCustomerDetectors(site.id).some((d) => d.detectorNumber === '300001' && d.reportId !== ''), 'גלאי שכבר בדוח נשאר רשום');
+
+console.log('שאלון:');
+check(RADON_QUESTIONS.length === 12, '12 שאלות כמו בטופס');
+check(unansweredQuestions({}) === 12, 'שאלון ריק — 12 חסרות');
+const answers = {
+  noteForm4: { answer: 'כן', detail: '' },
+  noteMitigation: { answer: 'לא', detail: '' },
+  notePlacedBy: { answer: 'מקבל השירות הניח ואסף', detail: '' },
+  noteSkipShort: { answer: 'לא מתאים', detail: '' },
+  noteSensitiveArea: { answer: 'לא ידוע', detail: '' },
+  noteExtension: { answer: 'לא', detail: '' },
+  noteSealing: { answer: 'כמעט הרמטי', detail: '' },
+  noteVentOpenings: { answer: 'כן', detail: 'צוהר בגג' },
+  noteVentSystems: { answer: 'כן', detail: '' },
+  noteRadonPaths: { answer: 'לא', detail: 'לא אמור להודפס' },
+  noteSolutions: { answer: 'לא ידוע', detail: '' },
+  noteApproved: { answer: 'כן', detail: '' },
+};
+check(unansweredQuestions(answers) === 0, 'שאלון מלא — אין חסרות');
+const printed = printedAnswers(answers);
+check(printed.notePlacedBy === 'מ/מ' && printed.noteSealing === 'כ"ה', 'תשובה מודפסת בקיצור של הטופס');
+check(printed.noteVentOpenings === 'כן — צוהר בגג', 'אילו? מודפס ליד הכן', printed.noteVentOpenings);
+check(printed.noteVentSystems === 'כן' && printed.noteRadonPaths === 'לא', 'פירוט בלי כן לא מודפס');
+check(printedAnswers({}).noteForm4 === '', 'בלי תשובה מודפס ריק');
+
+const qId = createInstallation(office.id);
+saveInstallation(qId, installed({
+  customerId: office.id,
+  answers,
+  wattStart: '120',
+  wattEnd: '130',
+  spaces: [{ kind: 'room', description: 'משרד', floor: 1, detectorNumber: '700001' }],
+}));
+check(loadInstallation(qId)!.wattStart === '120' && loadInstallation(qId)!.answers.noteForm4.answer === 'כן', 'תשובות וואט נשמרים בהתקנה');
+const qReport = loadRadonReport(createReportFromInstallation(qId, new Map([reading('700001', '40', '10')])))!;
+check(qReport.noteForm4 === 'כן' && qReport.notePlacedBy === 'מ/מ' && qReport.noteVentOpenings === 'כן — צוהר בגג', 'התשובות עברו לדוח');
+const noteText = radonDocumentText((await generateRadonReport(qReport as never)).bytes);
+const answerAfter = (needle: string, value: string) => {
+  const i = noteText.indexOf(needle);
+  return i >= 0 && noteText.slice(i, i + needle.length + 200).includes(value);
+};
+check(!noteText.includes('{note'), 'בדוח לא נשארו שדות לא ממולאים');
+check(answerAfter('פתחי אוורור', 'צוהר בגג'), 'בקובץ Word: פירוט הפתחים');
+check(answerAfter('האם הנחת הגלאים ואיסופם', 'מ/מ'), 'בקובץ Word: מי הניח ואסף');
+check(answerAfter('נורמלי (נ)', 'כ"ה'), 'בקובץ Word: רמת האיטום ומקרא חדש');
+
+const bare = RadonReportSchema.parse({ referenceNumber: '1', reportDate: '2026-01-01', recipientName: 'א' });
+check(bare.noteForm4 === 'לא' && bare.notePlacedBy === 'ב/ב' && bare.noteApproved === 'כן', 'דוח ישן מדפיס את מה שתמיד הדפיס');
+
+console.log('שדרוג תבנית:');
+const OLD_SHA = 'c5ffb3f3b87cf34328219da32ac04cd84e4f369a9e790c594d3e6fb119d95489';
+const bundled = readFileSync('templates/radon-template.docx');
+check(createHash('sha256').update(bundled).digest('hex') !== OLD_SHA, 'הקובץ המצורף אינו הגרסה הישנה');
+const uploaded = storeTemplate(bundled, 'העלאה ידנית.docx', '', 'radon');
+check(activeTemplate('radon')?.id === uploaded.id, 'תבנית קיימת לא מוחלפת');
 
 console.log('קריאת תווית:');
 const { readDetectorLabel } = await import('../src/lib/radon-lab-scan');

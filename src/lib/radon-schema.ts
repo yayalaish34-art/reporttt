@@ -123,6 +123,24 @@ export const RadonReportSchema = z.object({
   // ── Notes block (הערות לגבי הבדיקה) ───────────────────────────────
   /** Which rooms the notes block describes, e.g. "חדרים בקומת 1-". */
   notesRooms: text.default(''),
+  /**
+   * The answers in that block's table, as printed — see `radon-questions`.
+   *
+   * The defaults are what the template used to print as fixed text, so a report written
+   * before these were asked prints exactly what it always did.
+   */
+  noteForm4: text.default('לא'),
+  noteMitigation: text.default('לא'),
+  notePlacedBy: text.default('ב/ב'),
+  noteSkipShort: text.default('כן'),
+  noteSensitiveArea: text.default('כן'),
+  noteExtension: text.default('לא'),
+  noteSealing: text.default('לא מתאים'),
+  noteVentOpenings: text.default('לא'),
+  noteVentSystems: text.default('לא'),
+  noteRadonPaths: text.default('לא'),
+  noteSolutions: text.default('לא'),
+  noteApproved: text.default('כן'),
 });
 
 /**

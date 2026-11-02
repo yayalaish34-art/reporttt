@@ -7,6 +7,8 @@ import { SITE_KINDS, TEST_LENGTHS, RADON_VERDICTS } from '@/lib/radon-schema';
 import { actionLevel, combinedValue, implausibleUncertainty, newDetectorRow, radonVerdict, toNumber } from '@/lib/radon-rules';
 import { LabScanPanel } from './lab-scan';
 import { RadonCustomerFields, Text } from '../customer-fields';
+import { CollapsibleCard } from '../../collapsible-card';
+import { RADON_QUESTIONS } from '@/lib/radon-questions';
 import {
   radonCustomerMissing,
   radonDetectorsMissing,
@@ -266,6 +268,22 @@ export function RadonEditor({ id, initial }: { id: string; initial: RadonReport 
               onChange={(v) => update({ notesRooms: v })}
               wide
             />
+          </div>
+          <div style={{ marginTop: 16 }}>
+            <CollapsibleCard title="הערות לגבי הבדיקה" hint="מה שיודפס בטבלה שבדוח">
+              <div className="grid">
+                {RADON_QUESTIONS.map(({ field, question }) => (
+                  <Text
+                    key={field}
+                    label={question}
+                    value={report[field]}
+                    onChange={(v) => update({ [field]: v })}
+                    optional
+                    wide
+                  />
+                ))}
+              </div>
+            </CollapsibleCard>
           </div>
         </div>
         ),

@@ -111,6 +111,7 @@ function ensureSeeded(kind: TemplateKind = 'radiation'): void {
   if (Number(existing.n) > 0) {
     upgradeLegacyIaqTemplate(kind);
     upgradeBundledMoldTemplate(kind);
+    upgradeBundledRadonTemplate(kind);
     return;
   }
 
@@ -186,6 +187,33 @@ function upgradeBundledMoldTemplate(kind: TemplateKind): void {
     'mold',
   );
   console.log('תבנית העובשים עודכנה לגרסה המצורפת');
+}
+
+/**
+ * Radon templates that shipped in the image and were seeded as-is.
+ *
+ * Their notes table printed fixed answers. A database still running one is upgraded to
+ * the bundled file, whose table prints what was asked at the installation; a template
+ * somebody uploaded has a different hash and is never touched.
+ */
+const SUPERSEDED_RADON_TEMPLATES = new Set([
+  'c5ffb3f3b87cf34328219da32ac04cd84e4f369a9e790c594d3e6fb119d95489',
+]);
+
+function upgradeBundledRadonTemplate(kind: TemplateKind): void {
+  if (kind !== 'radon') return;
+  const active = db()
+    .prepare('SELECT sha256 FROM templates WHERE kind = ? AND is_active = 1 LIMIT 1')
+    .get(kind) as { sha256: string } | undefined;
+  if (!active || !SUPERSEDED_RADON_TEMPLATES.has(String(active.sha256))) return;
+
+  const bundled = resolve(process.cwd(), TEMPLATE_KINDS.radon.bundled);
+  if (!existsSync(bundled)) return;
+  const bytes = readFileSync(bundled);
+  if (SUPERSEDED_RADON_TEMPLATES.has(createHash('sha256').update(bytes).digest('hex'))) return;
+
+  storeTemplate(bytes, 'radon-template.docx', 'שדרוג אוטומטי: תשובות טבלת ההערות מהשאלון', 'radon');
+  console.log('תבנית הראדון עודכנה לגרסה המצורפת');
 }
 
 /**

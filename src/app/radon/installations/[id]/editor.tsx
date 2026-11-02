@@ -26,6 +26,7 @@ import {
 } from '@/lib/radon-installation';
 import { detectorKey } from '@/lib/radon-rules';
 import { radonCustomerMissing } from '@/lib/report-complete';
+import { RADON_QUESTIONS, unansweredQuestions } from '@/lib/radon-questions';
 
 /** Where a scan lands: a room, or one row of a hall. */
 type Target = { space: number; row?: number };
@@ -149,6 +150,7 @@ export function InstallationEditor({ id, initial }: { id: string; initial: Insta
   };
 
   const short = installation.testLength === 'קצרה';
+  const unanswered = unansweredQuestions(installation.answers);
   const spots = installationSpots(installation);
   const missingDetector = spots.filter((spot) => spot.detectorNumber === '').length;
 
@@ -183,6 +185,58 @@ export function InstallationEditor({ id, initial }: { id: string; initial: Insta
             hint: 'אצל מי מותקנים הגלאים',
             blocker: customerGaps ? `חסר כדי להמשיך: ${customerGaps}` : undefined,
             content: <RadonCustomerFields customer={installation} update={update} />,
+          },
+          {
+            title: 'שאלות לגבי הבדיקה',
+            hint: 'התשובות מודפסות בטבלת ההערות שבדוח',
+            blocker: unanswered > 0 ? `חסר כדי להמשיך: ${unanswered === 1 ? "שאלה אחת" : `${unanswered} שאלות`} ללא תשובה` : undefined,
+            content: (
+              <div>
+                {RADON_QUESTIONS.map(({ field, question, options, detail }) => {
+                  const given = installation.answers[field];
+                  return (
+                    <div className="field" key={field} style={{ marginBottom: 18 }}>
+                      <label>{question}</label>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
+                        {options.map(({ label }) => (
+                          <button
+                            key={label}
+                            type="button"
+                            className={given?.answer === label ? 'btn-primary' : 'btn'}
+                            aria-pressed={given?.answer === label}
+                            onClick={() =>
+                              update({
+                                answers: {
+                                  ...installation.answers,
+                                  [field]: { answer: label, detail: given?.detail ?? '' },
+                                },
+                              })
+                            }
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      {detail && given?.answer === 'כן' && (
+                        <input
+                          style={{ marginTop: 8 }}
+                          value={given.detail}
+                          placeholder="אילו?"
+                          onChange={(e) =>
+                            update({
+                              answers: {
+                                ...installation.answers,
+                                [field]: { answer: 'כן', detail: e.target.value },
+                              },
+                            })
+                          }
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ),
           },
           {
             title: 'חדרים ואולמות',
@@ -237,6 +291,28 @@ export function InstallationEditor({ id, initial }: { id: string; initial: Insta
                       disabled
                     />
                   </div>
+                  {short && (
+                    <>
+                      <div className="field">
+                        <label>ואט בתחילת הבדיקה (לא חובה)</label>
+                        <input
+                          className="ltr"
+                          inputMode="decimal"
+                          value={installation.wattStart}
+                          onChange={(e) => update({ wattStart: e.target.value })}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>ואט בסיום הבדיקה (לא חובה)</label>
+                        <input
+                          className="ltr"
+                          inputMode="decimal"
+                          value={installation.wattEnd}
+                          onChange={(e) => update({ wattEnd: e.target.value })}
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 {finishError && <div className="notice error">{finishError}</div>}
