@@ -58,6 +58,7 @@ export const RADON_QUESTIONS: readonly RadonQuestion[] = [
       { label: 'הרמטי', prints: 'ה' },
     ],
   },
+  { field: 'noteRoomType', question: 'האם החדר אטום או רגיל?', options: [{ label: 'רגיל' }, { label: 'אטום' }] },
   { field: 'noteVentOpenings', question: 'האם קיימים בחדר פתחי אוורור, חוץ מדלת וחלון? אילו?', options: YES_NO_UNKNOWN, detail: true },
   { field: 'noteVentSystems', question: 'האם קיימות בחדר מערכות אוורור? אילו?', options: YES_NO_UNKNOWN, detail: true },
   { field: 'noteRadonPaths', question: 'האם קיימים בחדר מסלולים לחדירת ראדון קרקעי? אילו?', options: YES_NO_UNKNOWN, detail: true },

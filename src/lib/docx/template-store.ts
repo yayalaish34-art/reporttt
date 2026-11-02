@@ -198,6 +198,8 @@ function upgradeBundledMoldTemplate(kind: TemplateKind): void {
  */
 const SUPERSEDED_RADON_TEMPLATES = new Set([
   'c5ffb3f3b87cf34328219da32ac04cd84e4f369a9e790c594d3e6fb119d95489',
+  // Before the notes table asked whether the room is sealed.
+  '671f723d5d9b3570750d78f06d0911520dc73a6194ea866c7dcff53f11d0942f',
 ]);
 
 function upgradeBundledRadonTemplate(kind: TemplateKind): void {

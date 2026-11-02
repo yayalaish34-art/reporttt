@@ -136,6 +136,8 @@ export const RadonReportSchema = z.object({
   noteSensitiveArea: text.default('כן'),
   noteExtension: text.default('לא'),
   noteSealing: text.default('לא מתאים'),
+  /** Blank by default: this row is new, and an older report never answered it. */
+  noteRoomType: text.default(''),
   noteVentOpenings: text.default('לא'),
   noteVentSystems: text.default('לא'),
   noteRadonPaths: text.default('לא'),

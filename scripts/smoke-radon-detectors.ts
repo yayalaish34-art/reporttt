@@ -217,8 +217,8 @@ deleteInstallation(installationId);
 check(listCustomerDetectors(site.id).some((d) => d.detectorNumber === '300001' && d.reportId !== ''), 'גלאי שכבר בדוח נשאר רשום');
 
 console.log('שאלון:');
-check(RADON_QUESTIONS.length === 12, '12 שאלות כמו בטופס');
-check(unansweredQuestions({}) === 12, 'שאלון ריק — 12 חסרות');
+check(RADON_QUESTIONS.length === 13, '13 שאלות');
+check(unansweredQuestions({}) === 13, 'שאלון ריק — 13 חסרות');
 const answers = {
   noteForm4: { answer: 'כן', detail: '' },
   noteMitigation: { answer: 'לא', detail: '' },
@@ -227,6 +227,7 @@ const answers = {
   noteSensitiveArea: { answer: 'לא ידוע', detail: '' },
   noteExtension: { answer: 'לא', detail: '' },
   noteSealing: { answer: 'כמעט הרמטי', detail: '' },
+  noteRoomType: { answer: 'אטום', detail: '' },
   noteVentOpenings: { answer: 'כן', detail: 'צוהר בגג' },
   noteVentSystems: { answer: 'כן', detail: '' },
   noteRadonPaths: { answer: 'לא', detail: 'לא אמור להודפס' },
@@ -260,12 +261,14 @@ check(!noteText.includes('{note'), 'בדוח לא נשארו שדות לא ממ�
 check(answerAfter('פתחי אוורור', 'צוהר בגג'), 'בקובץ Word: פירוט הפתחים');
 check(answerAfter('האם הנחת הגלאים ואיסופם', 'מ/מ'), 'בקובץ Word: מי הניח ואסף');
 check(answerAfter('נורמלי (נ)', 'כ"ה'), 'בקובץ Word: רמת האיטום ומקרא חדש');
+check(answerAfter('סוג החדר', 'אטום'), 'בקובץ Word: חדר אטום או רגיל');
 
 const bare = RadonReportSchema.parse({ referenceNumber: '1', reportDate: '2026-01-01', recipientName: 'א' });
 check(bare.noteForm4 === 'לא' && bare.notePlacedBy === 'ב/ב' && bare.noteApproved === 'כן', 'דוח ישן מדפיס את מה שתמיד הדפיס');
+check(bare.noteRoomType === '', 'דוח ישן לא טוען שהחדר אטום או רגיל');
 
 console.log('שדרוג תבנית:');
-const OLD_SHA = 'c5ffb3f3b87cf34328219da32ac04cd84e4f369a9e790c594d3e6fb119d95489';
+const OLD_SHA = '671f723d5d9b3570750d78f06d0911520dc73a6194ea866c7dcff53f11d0942f';
 const bundled = readFileSync('templates/radon-template.docx');
 check(createHash('sha256').update(bundled).digest('hex') !== OLD_SHA, 'הקובץ המצורף אינו הגרסה הישנה');
 const uploaded = storeTemplate(bundled, 'העלאה ידנית.docx', '', 'radon');
