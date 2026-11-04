@@ -7,7 +7,7 @@ export const metadata = { title: 'בקרת Job Number' };
 /**
  * The job-number register — every number the system has issued, newest first.
  *
- * One sequence across all five departments, from 817. A report takes its number the
+ * One sequence across all six departments, from 817. A report takes its number the
  * first time it is produced (a mould report already when its Hayes Chain of Custody
  * is printed) and keeps it after; see `job-numbers.ts`.
  */

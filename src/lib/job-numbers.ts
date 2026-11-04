@@ -15,7 +15,7 @@ import { db, now } from './db';
 /** The first number this system issues; earlier jobs were numbered by hand. */
 export const FIRST_JOB_NUMBER = 817;
 
-export type JobKind = 'radiation' | 'radon' | 'asbestos' | 'mold' | 'iaq';
+export type JobKind = 'radiation' | 'radon' | 'asbestos' | 'mold' | 'iaq' | 'prediction';
 
 /** The service each department's report is, as the register names it. */
 export const JOB_SERVICES: Record<JobKind, string> = {
@@ -24,6 +24,7 @@ export const JOB_SERVICES: Record<JobKind, string> = {
   asbestos: 'סקר אסבסט',
   mold: 'בדיקת עובשים',
   iaq: 'איכות אוויר',
+  prediction: 'חיזוי קרינה',
 };
 
 /** Where each department's report opens in the editor. */
@@ -33,6 +34,7 @@ export const JOB_PATHS: Record<JobKind, string> = {
   asbestos: '/asbestos',
   mold: '/mold',
   iaq: '/iaq',
+  prediction: '/prediction/projects',
 };
 
 export interface JobDetails {

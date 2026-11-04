@@ -1,0 +1,6 @@
+{
+  "provenance": "ANALYTIC",
+  "derivation": "B = mu0 I / (2 pi r) = 2e-7 * 100 / r T. 1 T = 1e7 mG.",
+  "relative_tolerance": 1e-5,
+  "predicted_mg": [200.0, 100.0, 40.0]
+}

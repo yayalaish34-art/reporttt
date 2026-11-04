@@ -1,0 +1,12 @@
+{
+  "sources": [
+    {
+      "id": "C1",
+      "kind": "THREE_PHASE",
+      "centerline": [[-100000, 0, 0], [100000, 0, 0]],
+      "arrangement": "FLAT_HORIZONTAL",
+      "spacing_m": 0.01,
+      "currents_a": [1000.0, 1000.0, 1000.0]
+    }
+  ]
+}

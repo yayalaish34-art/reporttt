@@ -1,0 +1,280 @@
+/*
+ * The prediction screens, scoped under .elf so nothing here reaches the rest of the system.
+ * Colours and form controls come from globals.css; this adds only what the plan editor,
+ * the heatmap and the result tables need.
+ */
+
+/* The plan needs the width that a survey form does not. */
+.shell:has(.elf) {
+  max-width: 1400px;
+}
+
+.elf {
+  --warn: #8a5a00;
+  --warn-soft: #fff4d6;
+}
+
+.elf .card {
+  padding: 14px 16px;
+  overflow: visible;
+}
+
+.elf .row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.elf .row input,
+.elf .row select {
+  width: auto;
+}
+
+.elf .row .grow,
+.elf .grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.elf .muted {
+  color: var(--muted);
+}
+
+.elf .small {
+  font-size: 12px;
+}
+
+.elf .num {
+  direction: ltr;
+  unicode-bidi: isolate;
+  font-variant-numeric: tabular-nums;
+}
+
+.elf label.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Controls inside a label inherit its small bold grey type unless reset. */
+.elf label.field input,
+.elf label.field select,
+.elf label.field textarea {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text);
+}
+
+.elf button.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.elf .tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--bg);
+  color: var(--muted);
+}
+
+.elf .tag.ok {
+  background: #e6f4ec;
+  color: var(--ok);
+}
+
+.elf .tag.warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.elf .tag.bad {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.elf table.data th,
+.elf table.data td {
+  border: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.elf .elf-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+
+.elf .elf-steps li {
+  padding: 3px 8px;
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--muted);
+}
+
+.elf .elf-steps li.done {
+  background: #e6f4ec;
+  color: var(--ok);
+}
+
+.elf .elf-steps li.now {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.elf .elf-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 14px;
+}
+
+.elf .elf-tabs a {
+  padding: 8px 14px;
+  text-decoration: none;
+  color: var(--muted);
+  border-bottom: 3px solid transparent;
+}
+
+.elf .elf-tabs a.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+.elf .editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 12px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .elf .editor {
+    grid-template-columns: 1fr;
+  }
+}
+
+.elf .plan-frame {
+  overflow: auto;
+  max-height: 75vh;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #eceff1;
+  position: relative;
+  direction: ltr;
+}
+
+.elf .plan-stage {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+}
+
+.elf .plan-stage img {
+  display: block;
+  user-select: none;
+  max-width: none;
+}
+
+.elf .plan-stage svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.elf .plan-stage.crosshair svg {
+  cursor: crosshair;
+}
+
+.elf .drawer {
+  position: fixed;
+  inset-block: 0;
+  inset-inline-end: 0;
+  width: min(520px, 100%);
+  background: var(--surface);
+  border-inline-start: 1px solid var(--border);
+  padding: 16px;
+  overflow-y: auto;
+  z-index: 20;
+  box-shadow: 0 0 24px rgb(0 0 0 / 18%);
+}
+
+.elf .drawer dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 3px 12px;
+  font-size: 13px;
+}
+
+.elf .drawer dt {
+  color: var(--muted);
+}
+
+.elf .drawer dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.elf .drawer pre {
+  direction: ltr;
+  text-align: left;
+  font-size: 11px;
+  background: var(--bg);
+  padding: 8px;
+  overflow-x: auto;
+  border-radius: 6px;
+}
+
+.elf .legend {
+  display: flex;
+  flex-wrap: wrap;
+  direction: ltr;
+  margin: 8px 0 2px;
+}
+
+.elf .legend span {
+  padding: 2px 10px;
+  font-size: 12px;
+  color: #111;
+}
+
+.elf .link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+}
+
+.elf .explain {
+  background: var(--accent-soft);
+  border: 1px solid #c9dbf0;
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.elf .explain p {
+  margin: 0 0 6px;
+}
+
+.elf .explain ol {
+  margin: 4px 0 0;
+  padding-inline-start: 20px;
+}

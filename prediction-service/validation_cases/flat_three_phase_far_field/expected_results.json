@@ -1,0 +1,6 @@
+{
+  "provenance": "ANALYTIC",
+  "derivation": "Far field B = (mu0 / 2 pi) * sqrt(3) * I * s / r^2 = 2e-7 * 1.7320508 * 1000 * 0.01 / r^2 T. Holds for r >> s; the tolerance covers the next-order term.",
+  "relative_tolerance": 1e-3,
+  "predicted_mg": [0.34641016, 0.08660254]
+}

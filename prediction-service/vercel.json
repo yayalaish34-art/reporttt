@@ -1,0 +1,21 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": ["fra1"],
+  "services": {
+    "web": {
+      "root": "upload-signer/",
+      "framework": "nextjs",
+      "bindings": [{ "type": "service", "service": "api", "format": "url", "env": "BACKEND_URL" }]
+    },
+    "api": {
+      "root": "backend/",
+      "framework": "fastapi",
+      "entrypoint": "app.main:app",
+      "buildCommand": "python -m app.deploy_setup"
+    }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": { "service": "api" } },
+    { "source": "/(.*)", "destination": { "service": "web" } }
+  ]
+}

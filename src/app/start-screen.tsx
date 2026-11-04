@@ -71,6 +71,16 @@ export function StartScreen() {
       newHref: '/iaq/new',
       listHref: '/iaq',
     },
+    {
+      key: 'prediction',
+      title: 'חיזוי קרינה',
+      blurb: 'חיזוי שדה מגנטי ELF על גבי תוכניות, לפני הקמה או אכלוס',
+      icon: '🧲',
+      newHref: '/prediction/new',
+      newLabel: 'חיזוי חדש',
+      listHref: '/prediction',
+      listLabel: 'כל הפרויקטים',
+    },
   ];
 
   return (

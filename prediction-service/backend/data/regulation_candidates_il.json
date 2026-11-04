@@ -1,0 +1,59 @@
+{
+  "_comment": "Candidates carried over from reporttt/src/lib/measurement-rules.ts. NOT verified against a source document. Loaded with active=false and no version or URL, so they affect nothing until an authorized user completes them and puts them in force.",
+  "rules": [
+    {
+      "country": "IL",
+      "authority": "המשרד להגנת הסביבה",
+      "document_name": "מועמד: רמת חשיפה ממושכת באזורי מגורים (מקור לאימות)",
+      "frequency_hz": 50.0,
+      "frequency_range": "50 Hz",
+      "occupancy_type": "CONTINUOUS_OCCUPANCY",
+      "building_types": ["Residential"],
+      "threshold": 4.0,
+      "threshold_unit": "mG",
+      "threshold_type": "TIME_AVERAGED",
+      "averaging_hours": 24.0,
+      "notes": "ממערכת הדוחות הקיימת: 'עד 4 מילי גאוס (ממוצע על פני 24 שעות)'. סוג המסמך ומקורו טרם אומתו."
+    },
+    {
+      "country": "IL",
+      "authority": "המשרד להגנת הסביבה",
+      "document_name": "מועמד: רמת חשיפה ממושכת במוסדות חינוך (מקור לאימות)",
+      "frequency_hz": 50.0,
+      "frequency_range": "50 Hz",
+      "occupancy_type": "CONTINUOUS_OCCUPANCY",
+      "building_types": ["School", "Kindergarten"],
+      "threshold": 4.0,
+      "threshold_unit": "mG",
+      "threshold_type": "TIME_AVERAGED",
+      "averaging_hours": 24.0,
+      "notes": "ממערכת הדוחות הקיימת: 'עד 4 מילי גאוס (ממוצע על פני 24 שעות)'. סוג המסמך ומקורו טרם אומתו."
+    },
+    {
+      "country": "IL",
+      "authority": "המשרד להגנת הסביבה",
+      "document_name": "מועמד: רמת חשיפה ממושכת במקומות עבודה (מקור לאימות)",
+      "frequency_hz": 50.0,
+      "frequency_range": "50 Hz",
+      "occupancy_type": "CONTINUOUS_OCCUPANCY",
+      "building_types": ["Office", "Commercial", "Industrial"],
+      "threshold": 10.0,
+      "threshold_unit": "mG",
+      "threshold_type": "INSTANTANEOUS_MAX",
+      "notes": "ממערכת הדוחות הקיימת: 'עד 10 מילי גאוס (לחשיפה של 8 שעות ביממה)'. יש לוודא מול המקור כיצד 8 השעות משתקפות בהערכה, ולהגדיר את סוג הסף בהתאם. רשימת סוגי המבנה כאן היא מיפוי ראשוני לאישור."
+    },
+    {
+      "country": "IL",
+      "authority": "המשרד להגנת הסביבה",
+      "document_name": "מועמד: חשיפה רגעית מרבית (מקור לאימות)",
+      "frequency_hz": 50.0,
+      "frequency_range": "50 Hz",
+      "occupancy_type": null,
+      "building_types": [],
+      "threshold": 1000.0,
+      "threshold_unit": "mG",
+      "threshold_type": "INSTANTANEOUS_MAX",
+      "notes": "ממערכת הדוחות הקיימת: 'חשיפה רגעית מרבית ... 1000 מיליגאוס'. הערת קוד שם מציינת שהערך תוקן בעבר מ-2,000. לאמת מול המקור."
+    }
+  ]
+}

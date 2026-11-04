@@ -1,0 +1,6 @@
+{
+  "provenance": "ANALYTIC",
+  "derivation": "First point is 5 m away (3-4-5 triangle): 2e-7 * 250 / 5 = 1e-5 T = 100 mG. Second point sits directly above at 3 m, as the conductor runs along x: 2e-7 * 250 / 3 T.",
+  "relative_tolerance": 1e-5,
+  "predicted_mg": [100.0, 166.666667]
+}

@@ -1,0 +1,15 @@
+.venv
+deploy
+docs
+validation_cases
+README.md
+**/__pycache__
+**/.pytest_cache
+**/.env*
+**/*.db
+**/*.tsbuildinfo
+backend/tests
+backend/storage
+backend/requirements-dev.txt
+upload-signer/node_modules
+upload-signer/.next

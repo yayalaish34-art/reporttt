@@ -23,3 +23,6 @@ tsconfig.tsbuildinfo
 # Local antenna rendering/integration-test outputs.
 scripts/antenna-map-test.png
 scripts/test-antenna-report*.docx
+
+# Deployed separately, to Vercel.
+prediction-service

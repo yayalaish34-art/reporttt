@@ -18,3 +18,13 @@ tsconfig.tsbuildinfo
 
 # Word lock files
 templates/~$*.docx
+
+# The prediction service (Python engine, deployed to Vercel from prediction-service/)
+.venv/
+__pycache__/
+.pytest_cache/
+prediction-service/.vercel/
+prediction-service/deploy/
+prediction-service/backend/storage/
+prediction-service/**/*.db
+!prediction-service/backend/data/
