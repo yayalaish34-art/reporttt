@@ -8,27 +8,32 @@ import { Point, pointsAttr, toPixel, toWorld } from '@/lib/prediction/geometry';
 import { BOX_TYPES, LINE_TYPES, OCCUPANCY_LABELS, SOURCE_LABELS, label } from '@/lib/prediction/labels';
 import { SourceForm } from './source-form';
 
-type Tool = 'select' | 'calibrate' | 'origin' | 'room' | 'line' | 'box';
+type Tool = 'select' | 'calibrate' | 'origin' | 'seat' | 'clear' | 'line' | 'box';
 type Selection = { kind: 'room' | 'source'; id: string } | null;
 
 const HINTS: Record<Tool, string> = {
   select: 'לחיצה על רכיב לבחירה. גרירה מזיזה אותו.',
   calibrate: 'לחיצה על שתי נקודות במידה ידועה, ואז הזנת האורך.',
   origin: 'לחיצה על נקודה שמופיעה בכל הקומות (למשל עמוד). יש לבחור את אותה נקודה בכל קומה.',
-  room: 'לחיצות ליצירת פוליגון. לחיצה כפולה או "סיום חדר" לסגירה.',
+  seat: 'לחיצה על שתי פינות נגדיות של אזור ישיבה. האזור נבדק לחשיפה ממושכת.',
+  clear: 'לחיצה על שתי פינות נגדיות של אזור שאין בו שהייה ממושכת ולא נדרש בו מיגון.',
   line: 'לחיצות לאורך התוואי. לחיצה כפולה או "סיום" לסיום.',
   box: 'לחיצה על שתי פינות נגדיות של הגוף.',
 };
 
-function polygonArea(points: Point[]): number {
-  return (
-    Math.abs(
-      points.reduce((sum, [x, y], i) => {
-        const [nx, ny] = points[(i + 1) % points.length];
-        return sum + x * ny - nx * y;
-      }, 0),
-    ) / 2
-  );
+/**
+ * The two marks the surveyor paints. Red is where someone sits for hours and is held to
+ * the long-term criteria; grey is passage and storage, where no mitigation is called for.
+ */
+const ZONES = {
+  seat: { occupancy: 'CONTINUOUS_OCCUPANCY', name: 'עמדת ישיבה', fill: 'rgba(220,38,38,.28)', stroke: '#b91c1c' },
+  clear: { occupancy: 'NON_CONTINUOUS_OCCUPANCY', name: 'לא נדרש מיגון', fill: 'rgba(107,114,128,.3)', stroke: '#4b5563' },
+} as const;
+
+function zoneStyle(room: any) {
+  if (room.occupancy_classification === 'CONTINUOUS_OCCUPANCY') return ZONES.seat;
+  if (room.occupancy_classification === 'NON_CONTINUOUS_OCCUPANCY') return ZONES.clear;
+  return { fill: 'rgba(31,95,168,.1)', stroke: '#1f5fa8' };
 }
 
 export default function ModelPage() {
@@ -52,6 +57,7 @@ export default function ModelPage() {
   const [newType, setNewType] = useState('THREE_PHASE_CABLE');
   const [drag, setDrag] = useState<{ start: Point; delta: Point } | null>(null);
   const [newFloor, setNewFloor] = useState({ name: '', plan_document_id: '', plan_page: '0' });
+  const [splitDocument, setSplitDocument] = useState('');
 
   const load = useCallback(async () => {
     const [p, f, r, s, d, b] = await Promise.all([
@@ -82,6 +88,24 @@ export default function ModelPage() {
   const calibrated = !!(floor?.scale_m_per_px && floor?.origin_px);
   const viewable = documents.filter((d) => d.viewable && d.status === 'CURRENT');
   const newFloorDocument = viewable.find((d) => d.id === newFloor.plan_document_id);
+  // A building's drawing set arrives as one PDF with a page per floor, basement included.
+  const splittable = viewable.filter(
+    (d) => d.page_count > 1 && !floors.some((f) => f.plan_document_id === d.id),
+  );
+
+  /** One floor per page, named by page until the surveyor renames it (מרתף, קרקע, 1…). */
+  async function splitIntoFloors(documentId: string) {
+    const document = viewable.find((d) => d.id === documentId);
+    let firstId: string | null = null;
+    for (let page = 0; page < document.page_count; page++) {
+      const created = await api(`${base}/floors`, {
+        method: 'POST',
+        json: { name: `עמוד ${page + 1}`, sort_order: floors.length + page, plan_document_id: documentId, plan_page: page },
+      });
+      firstId ??= created.id;
+    }
+    setFloorId(firstId);
+  }
   const selectedSource = selection?.kind === 'source' ? sources.find((s) => s.id === selection.id) : null;
   const selectedRoom = selection?.kind === 'room' ? rooms.find((r) => r.id === selection.id) : null;
 
@@ -136,6 +160,35 @@ export default function ModelPage() {
     }
     if (tool === 'calibrate') {
       setDraft((current) => (current.length >= 2 ? [point] : [...current, point]));
+      return;
+    }
+    if (tool === 'seat' || tool === 'clear') {
+      const next = [...draft, point];
+      if (next.length < 2) {
+        setDraft(next);
+        return;
+      }
+      const zone = ZONES[tool];
+      act(async () => {
+        const [[x1, y1], [x2, y2]] = next.map((p) => toWorld(p, floor));
+        const count = rooms.filter((r) => r.floor_id === floor.id && r.occupancy_classification === zone.occupancy).length;
+        const room = await api(`${base}/rooms`, {
+          method: 'POST',
+          json: {
+            floor_id: floor.id,
+            name: `${zone.name} ${count + 1}`,
+            polygon_m: [
+              [x1, y1],
+              [x2, y1],
+              [x2, y2],
+              [x1, y2],
+            ],
+          },
+        });
+        // Painting the zone is the classification; nothing is asked about it afterwards.
+        await api(`${base}/rooms/${room.id}`, { method: 'PATCH', json: { occupancy_classification: zone.occupancy } });
+        setDraft([]);
+      });
       return;
     }
     if (tool === 'box') {
@@ -211,6 +264,18 @@ export default function ModelPage() {
           {floor && (
             <>
               <label className="field">
+                שם הקומה
+                <input
+                  style={{ width: 120 }}
+                  defaultValue={floor.name}
+                  key={`${floor.id}-name-${floor.name}`}
+                  onBlur={(e) => {
+                    const value = e.target.value.trim();
+                    if (value && value !== floor.name) act(() => api(`${base}/floors/${floor.id}`, { method: 'PATCH', json: { name: value } }));
+                  }}
+                />
+              </label>
+              <label className="field">
                 גובה מפלס (מ׳)
                 <input
                   type="number"
@@ -234,6 +299,24 @@ export default function ModelPage() {
             </>
           )}
           <span className="grow" />
+          {splittable.length > 0 && (
+            <form
+              className="row"
+              onSubmit={(e) => {
+                e.preventDefault();
+                act(() => splitIntoFloors(splitDocument || splittable[0].id));
+              }}
+            >
+              <select value={splitDocument} onChange={(e) => setSplitDocument(e.target.value)}>
+                {splittable.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.file_name} ({d.page_count} עמודים)
+                  </option>
+                ))}
+              </select>
+              <button className="btn-primary">פירוק לקומות</button>
+            </form>
+          )}
           <form
             className="row"
             onSubmit={(e) => {
@@ -295,7 +378,8 @@ export default function ModelPage() {
                   ['select', 'בחירה'],
                   ['calibrate', 'כיול'],
                   ['origin', 'נקודת ייחוס'],
-                  ['room', 'חדר'],
+                  ['seat', 'עמדת ישיבה (אדום)'],
+                  ['clear', 'לא נדרש מיגון (אפור)'],
                   ['line', 'כבל / תוואי'],
                   ['box', 'שנאי / לוח'],
                 ] as [Tool, string][]
@@ -304,7 +388,7 @@ export default function ModelPage() {
                   key={value}
                   type="button"
                   className={tool === value ? 'active' : ''}
-                  disabled={(value === 'origin' && !floor.scale_m_per_px) || ((value === 'room' || value === 'line' || value === 'box') && !calibrated)}
+                  disabled={(value === 'origin' && !floor.scale_m_per_px) || ((value === 'seat' || value === 'clear' || value === 'line' || value === 'box') && !calibrated)}
                   onClick={() => {
                     pickTool(value);
                     if (value === 'line' && !LINE_TYPES.includes(newType)) setNewType('THREE_PHASE_CABLE');
@@ -375,26 +459,6 @@ export default function ModelPage() {
               </form>
             )}
 
-            {tool === 'room' && draft.length >= 3 && (
-              <form
-                className="row"
-                style={{ marginBottom: 8 }}
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  act(async () => {
-                    const polygon = draft.map((p) => toWorld(p, floor));
-                    await api(`${base}/rooms`, { method: 'POST', json: { floor_id: floor.id, name: pendingName, polygon_m: polygon } });
-                    setDraft([]);
-                    setPendingName('');
-                  });
-                }}
-              >
-                <input required placeholder="שם החדר" value={pendingName} onChange={(e) => setPendingName(e.target.value)} />
-                <span className="small muted num">{polygonArea(draft.map((p) => toWorld(p, floor))).toFixed(1)} מ״ר</span>
-                <button className="btn-primary">סיום חדר</button>
-              </form>
-            )}
-
             <PlanView
               projectId={id}
               floor={floor}
@@ -438,11 +502,11 @@ export default function ModelPage() {
                       >
                         <polygon
                           points={pointsAttr(points)}
-                          fill={isSelected ? 'rgba(31,95,168,.25)' : 'rgba(31,95,168,.1)'}
-                          stroke="#1f5fa8"
-                          strokeWidth={stroke}
+                          fill={zoneStyle(room).fill}
+                          stroke={zoneStyle(room).stroke}
+                          strokeWidth={isSelected ? stroke * 2 : stroke}
                         />
-                        <text x={points[0][0] + 8} y={points[0][1] + fontSize * 1.2} fontSize={fontSize} fill="#1f5fa8">
+                        <text x={points[0][0] + 8} y={points[0][1] + fontSize * 1.2} fontSize={fontSize} fill={zoneStyle(room).stroke}>
                           {room.name}
                         </text>
                       </g>
@@ -615,7 +679,7 @@ export default function ModelPage() {
                   {s.missing.length ? <span className="tag warn">MISSING_DATA</span> : <span className="tag ok">מלא</span>}
                 </div>
               ))}
-              <h3 style={{ margin: '10px 0 6px' }}>חדרים ({rooms.length})</h3>
+              <h3 style={{ margin: '10px 0 6px' }}>אזורים ({rooms.length})</h3>
               {rooms.map((r) => (
                 <div key={r.id} className="row">
                   <button
