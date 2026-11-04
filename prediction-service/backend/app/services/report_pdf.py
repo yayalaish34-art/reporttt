@@ -228,9 +228,10 @@ def _heatmaps(db: Session, project: Project, run: CalculationRun) -> list:
                         if s.floor_id == floor.id and len(s.geometry.get("points") or []) >= 2
                     ],
                 )
-            image.thumbnail((2200, 2200), PilImage.LANCZOS)
+            image.thumbnail((1800, 1800), PilImage.LANCZOS)
             buffer = io.BytesIO()
-            image.save(buffer, "PNG", optimize=True)
+            # A scanned A0 sheet as PNG runs to megabytes a page; JPEG keeps the report small.
+            image.convert("RGB").save(buffer, "JPEG", quality=82, optimize=True)
             buffer.seek(0)
             scale = min(CONTENT_WIDTH / image.width, 16 * cm / image.height)
             story.append(

@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { api } from '@/lib/prediction/api';
 
 const TABS = [
+  ['auto', 'חיזוי אוטומטי'],
   ['details', 'פרטים'],
   ['documents', 'מסמכים'],
   ['model', 'מודל'],
@@ -79,13 +80,15 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
           </p>
         </div>
       </div>
-      <ol className="elf-steps">
-        {STEPS.map((step, index) => (
-          <li key={step} className={index < done ? 'done' : index === done ? 'now' : ''}>
-            {index + 1} {step}
-          </li>
-        ))}
-      </ol>
+      {!pathname.endsWith('/auto') && (
+        <ol className="elf-steps">
+          {STEPS.map((step, index) => (
+            <li key={step} className={index < done ? 'done' : index === done ? 'now' : ''}>
+              {index + 1} {step}
+            </li>
+          ))}
+        </ol>
+      )}
       <nav className="elf-tabs">
         {TABS.map(([path, text]) => (
           <Link

@@ -60,6 +60,8 @@ class Project(Base):
     model_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    # Answers given in the automatic flow, so the model can be rebuilt from them at any time.
+    auto_settings: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
 class Document(Base):
@@ -76,6 +78,22 @@ class Document(Base):
     status: Mapped[str] = mapped_column(String(20), default="CURRENT")
     page_count: Mapped[int] = mapped_column(Integer, default=1)
     storage_key: Mapped[str] = mapped_column(String(255))
+
+
+class PageAnalysis(Base):
+    """What the vision model read on one plan page, as it came back (after shape checks)."""
+
+    __tablename__ = "page_analyses"
+    __table_args__ = (UniqueConstraint("document_id", "page"),)
+
+    id: Mapped[str] = _id()
+    project_id: Mapped[str] = _project_fk()
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), index=True)
+    page: Mapped[int] = mapped_column(Integer)
+    result: Mapped[dict] = mapped_column(JSON)
+    model: Mapped[str] = mapped_column(String(100), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
 
 
 class Floor(Base):

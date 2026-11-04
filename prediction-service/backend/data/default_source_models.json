@@ -1,0 +1,113 @@
+{
+  "_note": "Engineering assumptions used by the automatic flow when a plan gives no better data. Every value here is an ENGINEERING_ASSUMPTION: it is listed in the report as such and must be checked against manufacturer data or a measurement before a report is final. Reference curves are field (mG) at a distance from the body's surface (m), at reference_current_a.",
+  "kinds": {
+    "TRANSFORMER": {
+      "label": "שנאי",
+      "source_type": "TRANSFORMER",
+      "model_type": "TRANSFORMER_EMPIRICAL",
+      "mounting": "floor",
+      "height_above_floor_m": 0.0,
+      "box_height_m": 2.0,
+      "min_box_m": 1.5,
+      "reference_current_a": 910,
+      "reference_curve": [[0.3, 1000], [1.0, 200], [2.0, 50], [4.0, 10], [8.0, 2]],
+      "reference_source": "ספריית ברירות המחדל של המערכת: שנאי חלוקה 630kVA בזרם נקוב, דעיכה בקירוב 1/r^2.2. הנחה הנדסית, לאימות מול נתוני יצרן או מדידה."
+    },
+    "METER_BOARD": {
+      "label": "לוח מונים",
+      "source_type": "LV_BOARD",
+      "model_type": "PANEL_EMPIRICAL",
+      "mounting": "floor",
+      "height_above_floor_m": 0.0,
+      "box_height_m": 2.0,
+      "min_box_m": 0.6,
+      "reference_current_a": 100,
+      "reference_curve": [[0.3, 150], [1.0, 25], [2.0, 6], [4.0, 1.5]],
+      "reference_source": "ספריית ברירות המחדל של המערכת: לוח מתח נמוך, 100A. הנחה הנדסית, לאימות מול נתוני יצרן או מדידה."
+    },
+    "DISTRIBUTION_PILLAR": {
+      "label": "פילר חלוקה",
+      "source_type": "MAIN_DISTRIBUTION_BOARD",
+      "model_type": "PANEL_EMPIRICAL",
+      "mounting": "floor",
+      "height_above_floor_m": 0.0,
+      "box_height_m": 1.6,
+      "min_box_m": 0.6,
+      "reference_current_a": 100,
+      "reference_curve": [[0.3, 150], [1.0, 25], [2.0, 6], [4.0, 1.5]],
+      "reference_source": "ספריית ברירות המחדל של המערכת: לוח מתח נמוך, 100A. הנחה הנדסית, לאימות מול נתוני יצרן או מדידה."
+    },
+    "MAIN_BOARD": {
+      "label": "לוח ראשי",
+      "source_type": "MAIN_DISTRIBUTION_BOARD",
+      "model_type": "PANEL_EMPIRICAL",
+      "mounting": "floor",
+      "height_above_floor_m": 0.0,
+      "box_height_m": 2.0,
+      "min_box_m": 0.6,
+      "reference_current_a": 100,
+      "reference_curve": [[0.3, 150], [1.0, 25], [2.0, 6], [4.0, 1.5]],
+      "reference_source": "ספריית ברירות המחדל של המערכת: לוח מתח נמוך, 100A. הנחה הנדסית, לאימות מול נתוני יצרן או מדידה."
+    },
+    "EV_CHARGING": {
+      "label": "לוח טעינת רכבים",
+      "source_type": "EV_CHARGING",
+      "model_type": "PANEL_EMPIRICAL",
+      "mounting": "floor",
+      "height_above_floor_m": 0.0,
+      "box_height_m": 2.0,
+      "min_box_m": 0.6,
+      "reference_current_a": 100,
+      "reference_curve": [[0.3, 150], [1.0, 25], [2.0, 6], [4.0, 1.5]],
+      "reference_source": "ספריית ברירות המחדל של המערכת: לוח מתח נמוך, 100A. הנחה הנדסית, לאימות מול נתוני יצרן או מדידה."
+    },
+    "GENERATOR": {
+      "label": "גנרטור",
+      "source_type": "GENERATOR",
+      "model_type": "PANEL_EMPIRICAL",
+      "mounting": "floor",
+      "height_above_floor_m": 0.0,
+      "box_height_m": 2.0,
+      "min_box_m": 1.0,
+      "reference_current_a": 100,
+      "reference_curve": [[0.3, 150], [1.0, 25], [2.0, 6], [4.0, 1.5]],
+      "reference_source": "ספריית ברירות המחדל של המערכת: גוף מתח נמוך, 100A. הנחה הנדסית, לאימות מול נתוני יצרן או מדידה."
+    },
+    "PV_INVERTER": {
+      "label": "ממיר סולארי",
+      "source_type": "INVERTER",
+      "model_type": "PANEL_EMPIRICAL",
+      "mounting": "floor",
+      "height_above_floor_m": 0.0,
+      "box_height_m": 1.0,
+      "min_box_m": 0.5,
+      "reference_current_a": 100,
+      "reference_curve": [[0.3, 150], [1.0, 25], [2.0, 6], [4.0, 1.5]],
+      "reference_source": "ספריית ברירות המחדל של המערכת: גוף מתח נמוך, 100A. הנחה הנדסית, לאימות מול נתוני יצרן או מדידה."
+    },
+    "FEEDER": {
+      "label": "קו הזנה",
+      "source_type": "THREE_PHASE_CABLE",
+      "mounting": "ceiling",
+      "below_ceiling_m": 0.3,
+      "arrangement": "TREFOIL",
+      "spacing_m": 0.05
+    },
+    "BUSBAR": {
+      "label": "פס צבירה",
+      "source_type": "BUSBAR",
+      "mounting": "ceiling",
+      "below_ceiling_m": 0.3,
+      "arrangement": "FLAT_HORIZONTAL",
+      "spacing_m": 0.04,
+      "bar_width_m": 0.1
+    },
+    "RISER": {
+      "label": "פיר הזנה",
+      "source_type": "RISER",
+      "mounting": "vertical",
+      "arrangement": "TREFOIL",
+      "spacing_m": 0.05
+    }
+  }
+}

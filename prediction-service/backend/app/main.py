@@ -5,13 +5,13 @@ from elf_engine import ENGINE_VERSION
 
 from .config import settings
 from .db import SessionLocal
-from .routers import auth, calculation, documents, model, projects, regulation, reports, validation
+from .routers import auth, auto, calculation, documents, model, projects, regulation, reports, validation
 
 settings.assert_safe_for_deployment()
 
 app = FastAPI(title="Galit ELF Prediction System", version=ENGINE_VERSION)
 
-for module in (auth, projects, documents, model, calculation, regulation, reports, validation):
+for module in (auth, projects, documents, model, calculation, regulation, reports, validation, auto):
     app.include_router(module.router, prefix="/api")
 app.include_router(projects.meta_router, prefix="/api")
 

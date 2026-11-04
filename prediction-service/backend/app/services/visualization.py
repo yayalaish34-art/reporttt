@@ -5,6 +5,7 @@ from the regulation engine alone.
 """
 
 import io
+import threading
 from pathlib import Path
 
 import pypdfium2 as pdfium
@@ -27,6 +28,8 @@ BANDS = [
 RENDER_DPI = 150
 MAX_RENDER_SIDE = 8000
 FONT_PATH = Path(__file__).resolve().parents[2] / "assets" / "fonts" / "Arimo-Regular.ttf"
+# PDFium is not thread-safe, and requests are served on a thread pool. Every use holds this.
+PDFIUM_LOCK = threading.Lock()
 
 
 def band_color(value: float) -> tuple[int, int, int]:
@@ -40,14 +43,15 @@ def band_color(value: float) -> tuple[int, int, int]:
 def plan_page_count(path: Path, extension: str) -> int:
     """How many pages an uploaded file has. Raises ValueError when it cannot be read."""
     if extension == "pdf":
-        try:
-            document = pdfium.PdfDocument(str(path))
-        except PdfiumError as error:
-            raise ValueError("לא ניתן לקרוא את קובץ ה-PDF") from error
-        try:
-            return len(document)
-        finally:
-            document.close()
+        with PDFIUM_LOCK:
+            try:
+                document = pdfium.PdfDocument(str(path))
+            except PdfiumError as error:
+                raise ValueError("לא ניתן לקרוא את קובץ ה-PDF") from error
+            try:
+                return len(document)
+            finally:
+                document.close()
     if extension in RASTER_TYPES:
         try:
             with Image.open(path) as image:
@@ -68,14 +72,15 @@ def render_page_png(document: Document, page: int) -> str:
         return key
     with storage.local_copy(document.storage_key) as source:
         if document.file_type == "pdf":
-            pdf = pdfium.PdfDocument(str(source))
-            try:
-                pdf_page = pdf[page]
-                width, height = pdf_page.get_size()
-                scale = min(RENDER_DPI / 72.0, MAX_RENDER_SIDE / max(width, height))
-                image = pdf_page.render(scale=scale).to_pil().convert("RGB")
-            finally:
-                pdf.close()
+            with PDFIUM_LOCK:
+                pdf = pdfium.PdfDocument(str(source))
+                try:
+                    pdf_page = pdf[page]
+                    width, height = pdf_page.get_size()
+                    scale = min(RENDER_DPI / 72.0, MAX_RENDER_SIDE / max(width, height))
+                    image = pdf_page.render(scale=scale).to_pil().convert("RGB")
+                finally:
+                    pdf.close()
         else:
             with Image.open(source) as opened:
                 image = opened.convert("RGB")

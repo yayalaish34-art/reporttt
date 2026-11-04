@@ -49,7 +49,7 @@ export default function PredictionProjects() {
                 {projects.map((project) => (
                   <tr key={project.id}>
                     <td>
-                      <Link href={`/prediction/projects/${project.id}/documents`} prefetch={false}>
+                      <Link href={`/prediction/projects/${project.id}/auto`} prefetch={false}>
                         {project.project_name}
                       </Link>
                     </td>

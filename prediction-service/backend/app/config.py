@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     # A connected Blob store sets these. Either one selects Blob storage.
     blob_store_id: str | None = None
     blob_read_write_token: str | None = None
+    # Automatic reading of plan pages. Without a key the manual flow still works.
+    openai_api_key: str | None = None
+    openai_model: str = "gpt-5"
 
     @property
     def sqlalchemy_url(self) -> str:
