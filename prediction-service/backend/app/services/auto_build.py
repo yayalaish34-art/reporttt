@@ -22,7 +22,7 @@ from .. import storage
 from ..audit import invalidate_verification, record
 from .plan_ai import PATH_KINDS
 from ..models import Assumption, Document, ElectricalSource, Floor, PageAnalysis, Project, Room, User
-from .source_model import ensure_details, set_field
+from .source_model import ensure_details, is_line, set_field
 from .visualization import render_page_png
 
 LIBRARY_PATH = Path(__file__).resolve().parents[2] / "data" / "default_source_models.json"
@@ -572,7 +572,12 @@ def _room(project, floor, plan, name, kind, polygon, holes, continuous, area) ->
     )
 
 
-def build_rooms(project, floor: Floor, plan: dict, found: dict) -> list[Room]:
+# Boards, pillars and transformers stand in a niche or an electrical room. The strip around
+# one that no room claims is that space, not part of a flat.
+EQUIPMENT_STRIP_M = 1.0
+
+
+def build_rooms(project, floor: Floor, plan: dict, found: dict, equipment: list[tuple[str, list]] | None = None) -> list[Room]:
     """Every room the plan shows, and the rest of the floor as one more zone.
 
     Inside a flat, an office or a shop is prolonged occupancy; a corridor, a lobby, stairs,
@@ -604,6 +609,22 @@ def build_rooms(project, floor: Floor, plan: dict, found: dict) -> list[Room]:
                   room["kind"] in STAY_KINDS, shape.area)
         )
 
+    rooms_area = unary_union(shapes) if shapes else None
+    for tag, corners in equipment or []:
+        around = ShapelyPolygon([(corners[0][0], corners[0][1]), (corners[1][0], corners[0][1]), (corners[1][0], corners[1][1]), (corners[0][0], corners[1][1])])
+        strip = around.buffer(EQUIPMENT_STRIP_M).intersection(building)
+        if rooms_area is not None:
+            strip = strip.difference(rooms_area)
+        strip = strip.buffer(0)
+        part = max(strip.geoms, key=lambda g: g.area) if hasattr(strip, "geoms") else strip
+        if part.is_empty or part.geom_type != "Polygon" or part.area < 0.5:
+            continue
+        shapes.append(part)
+        rooms_area = part if rooms_area is None else rooms_area.union(part)
+        made.append(
+            _room(project, floor, plan, f"סביבת ציוד חשמלי {tag}", "אזור טכני", [list(c) for c in part.exterior.coords[:-1]],
+                  [[list(c) for c in ring.coords[:-1]] for ring in part.interiors], False, part.area)
+        )
     rest = building.difference(unary_union(shapes)) if shapes else building
     parts = [part for part in (rest.geoms if hasattr(rest, "geoms") else [rest]) if part.geom_type == "Polygon" and part.area >= 1.0]
     continuous = plan["use"] in CONTINUOUS_USES or plan["use"] is None
@@ -810,7 +831,12 @@ def build_model(db: Session, project: Project, user: User) -> dict:
         plan = plans[level]
         if floor.id in manual_floors or floor.scale_m_per_px is None or not floor.origin_px:
             continue
-        for room in build_rooms(project, floor, plan, found_by_plan[plan["key"]]):
+        equipment = [
+            (s.tag, s.geometry["points"][:2])
+            for s in created_sources
+            if s.floor_id == floor.id and not is_line(s.source_type) and len(s.geometry.get("points") or []) >= 2
+        ]
+        for room in build_rooms(project, floor, plan, found_by_plan[plan["key"]], equipment):
             db.add(room)
             zones += 1
 

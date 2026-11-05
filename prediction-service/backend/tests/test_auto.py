@@ -234,7 +234,10 @@ def test_automatic_flow_from_plans_to_report(admin, monkeypatch):  # noqa: F811
     api(admin, "PUT", f"{base}/auto/settings", 422, json={"kinds": {"LIGHT": {"max_current_a": 5}}})
 
     built = api(admin, "POST", f"{base}/auto/build")
-    assert (built["floors"], built["sources"], built["zones"]) == (2, 2, 2)
+    # A zone per floor, and the strip around the transformer as a technical area.
+    assert (built["floors"], built["sources"], built["zones"]) == (2, 2, 3)
+    around = [r for r in api(admin, "GET", f"{base}/rooms") if r["name"].startswith("סביבת ציוד חשמלי")]
+    assert len(around) == 1 and around[0]["occupancy_classification"] == "NON_CONTINUOUS_OCCUPANCY"
     floors = {f["name"]: f for f in api(admin, "GET", f"{base}/floors")}
     assert floors["מרתף 1-"]["elevation_m"] == -3.5 and floors["קומת קרקע"]["elevation_m"] == 0
     assert floors["מרתף 1-"]["origin_px"] == pytest.approx(floors["קומת קרקע"]["origin_px"], abs=1)
@@ -256,9 +259,9 @@ def test_automatic_flow_from_plans_to_report(admin, monkeypatch):  # noqa: F811
     ground = floors["קומת קרקע"]["id"]
     api(admin, "POST", f"{base}/rooms", 201, json={"floor_id": ground, "name": "עמדת ישיבה", "polygon_m": [[2, -2], [5, -2], [5, -5], [2, -5]]})
     rebuilt = api(admin, "POST", f"{base}/auto/build")
-    assert rebuilt["zones"] == 1
+    assert rebuilt["zones"] == 2
     rooms = api(admin, "GET", f"{base}/rooms")
-    assert sorted(r["name"] for r in rooms) == ["עמדת ישיבה", "שאר שטח הקומה"]
+    assert sorted(r["name"] for r in rooms) == ["סביבת ציוד חשמלי ש1", "עמדת ישיבה", "שאר שטח הקומה"]
 
     finished = api(admin, "POST", f"{base}/auto/finish")
     assert finished["report"]["version"] == 1

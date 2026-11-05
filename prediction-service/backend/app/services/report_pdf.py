@@ -432,7 +432,7 @@ def build_report_pdf(
     per_room = _worst_per_room(results)
     continuous = [r for r in per_room if r.occupancy_classification == "CONTINUOUS_OCCUPANCY"]
     passing_through = [r for r in per_room if r.occupancy_classification != "CONTINUOUS_OCCUPANCY"]
-    floor_order = [f["name"] for f in floors]
+    floor_order = [f["name"] for f in sorted(floors, key=lambda f: f["elevation_m"] if f["elevation_m"] is not None else 0)]
     story += [
         rtl("11. סיווג אזורי שהייה", H1),
         rtl("בתוך דירה, משרד או חנות השהייה ממושכת. מסדרון, לובי, חדר מדרגות, מעלית, פיר, מחסן, חדר טכני וחניה: שהייה לא ממושכת."),
