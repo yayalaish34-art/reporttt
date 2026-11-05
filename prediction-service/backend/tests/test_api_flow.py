@@ -135,13 +135,21 @@ def test_requires_login(app_client):
     assert app_client.get("/api/projects").status_code == 401
 
 
-def test_candidate_rules_load_inactive_and_cannot_activate_without_a_source(admin):
+def test_the_guideline_is_the_rule_in_force(admin):
     rules = api(admin, "GET", "/api/regulation/rules")
-    assert len(rules) == 4
-    assert all(rule["active"] is False and rule["verified_at"] is None for rule in rules)
-    response = admin.post(f"/api/regulation/rules/{rules[0]['id']}/activation", json={"active": True, "reason": "x"})
-    assert response.status_code == 409
-    assert "source_url" in response.json()["detail"]["missing"]
+    assert len(rules) == 2
+    assert all(r["active"] and r["verified_at"] and r["document_version"] == "מהדורה 2" for r in rules)
+    assert all(r["effective_date"] == "2020-03-11" and r["source_url"].endswith("/api/regulation/document") for r in rules)
+    general = next(r for r in rules if r["occupancy_type"] is None)
+    assert (general["threshold"], general["threshold_type"], general["averaging_hours"], general["background_mg"]) == (4.0, "TIME_AVERAGED", 24.0, 1.0)
+    schools = next(r for r in rules if r["occupancy_type"] == "CONTINUOUS_OCCUPANCY")
+    assert schools["building_types"] == ["School", "Kindergarten"] and schools["threshold_type"] == "INSTANTANEOUS_MAX"
+
+    document = admin.get("/api/regulation/document")
+    assert document.status_code == 200 and document.content[:5] == b"%PDF-"
+    # The guideline's own table, from B < 72/T + 1.
+    table = {row["hours"]: row["allowed_mg"] for row in api(admin, "GET", "/api/regulation/summary")["allowed_by_hours"]}
+    assert table == {1: 73, 2: 37, 3: 25, 4: 19, 5: 15.4, 6: 13, 7: 11.3, 8: 10, 9: 9, 10: 8.2, 12: 7, 18: 5, 24: 4}
 
 
 def test_questions_are_dynamic(admin):
@@ -207,6 +215,9 @@ def test_full_flow_from_empty_project_to_issued_report(admin):
     api(admin, "POST", f"{base}/verify-model", json={"verified": True})
 
     # Everything is known except a rule. Results exist, but no status may be claimed.
+    guideline = [r for r in api(admin, "GET", "/api/regulation/rules") if r["active"]]
+    for item in guideline:
+        api(admin, "POST", f"/api/regulation/rules/{item['id']}/activation", json={"active": False, "reason": "test: no rule"})
     run = api(admin, "POST", f"{base}/runs", 201, json=run_body)
     assert run["is_final"] is False
     assert any(b["code"] == "REGULATION_RULE" for b in run["blockers"])
@@ -285,6 +296,8 @@ def test_full_flow_from_empty_project_to_issued_report(admin):
         assert any(b["code"] == "RUN_STALE" for b in stale["blockers"])
     finally:
         api(admin, "POST", f"/api/regulation/rules/{rule['id']}/activation", json={"active": False, "reason": "test cleanup"})
+        for item in guideline:
+            api(admin, "POST", f"/api/regulation/rules/{item['id']}/activation", json={"active": True, "reason": "test cleanup"})
 
 
 def test_mitigation_scenario_shows_before_and_after(admin):

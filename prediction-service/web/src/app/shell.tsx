@@ -42,7 +42,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               פרויקטים
             </Link>
             <Link className="btn" href="/regulation/" prefetch={false}>
-              כללי רגולציה
+              מסמך הרגולציה
             </Link>
             <span className="grow" />
             <span className="small muted">{user.full_name || user.email}</span>

@@ -265,6 +265,11 @@ def test_automatic_flow_from_plans_to_report(admin, monkeypatch):  # noqa: F811
 
     finished = api(admin, "POST", f"{base}/auto/finish")
     assert finished["report"]["version"] == 1
+    # The guideline is in force and every zone has its hours, so each one is judged.
+    results = api(admin, "GET", f"{base}/runs/{finished['run']['id']}")["results"]
+    automatic = [r for r in results if r["room_name"] != "עמדת ישיבה"]
+    assert automatic and all(r["status"] in ("PASS", "FAIL") for r in automatic)
+    assert {r["room_name"]: r["occupancy_hours"] for r in automatic}["סביבת ציוד חשמלי ש1"] == 0
     assert all(s["user_verified"] for s in api(admin, "GET", f"{base}/sources"))
     assert api(admin, "GET", f"{base}")["model_verified"] is True
 

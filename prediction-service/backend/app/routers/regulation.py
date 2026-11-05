@@ -7,10 +7,29 @@ from ..db import get_db
 from ..models import RegulationRule, User, utcnow
 from ..schemas import ActivateIn, RegulationRuleIn, RegulationRulePatch
 from ..security import approver_user, current_user
-from ..services.regulation_rules import REQUIRED_TO_ACTIVATE
+from fastapi.responses import FileResponse
+
+from ..services.regulation_rules import REQUIRED_TO_ACTIVATE, regulation_document
 from .common import row_dict
 
 router = APIRouter(prefix="/regulation/rules", tags=["regulation"])
+document_router = APIRouter(prefix="/regulation", tags=["regulation"])
+
+
+@document_router.get("/document")
+def document(_: User = Depends(current_user)):
+    """The guideline the rules in force come from, as the authority published it."""
+    details = regulation_document()
+    return FileResponse(
+        details["path"], media_type="application/pdf", filename="moep-magnetic-field-exposure-2020.pdf", content_disposition_type="inline"
+    )
+
+
+@document_router.get("/summary")
+def summary(_: User = Depends(current_user)):
+    details = {k: v for k, v in regulation_document().items() if k not in ("path", "file")}
+    # The guideline's own table: the field allowed beside an installation, by hours of stay.
+    return {**details, "allowed_by_hours": [{"hours": t, "allowed_mg": round(72 / t + 1, 1)} for t in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 18, 24)]}
 
 
 def _get(db: Session, rule_id: str) -> RegulationRule:

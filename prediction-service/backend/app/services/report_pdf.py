@@ -427,6 +427,23 @@ def build_report_pdf(
         )
     else:
         story.append(rtl("לא הוזן כלל רגולטורי מאומת ותקף. לכן לא נקבע סטטוס רגולטורי, וכל התוצאות מסומנות כנדרשות בדיקה רגולטורית."))
+    if any(r.get("background_mg") for r in rules):
+        story += [
+            Spacer(1, 4),
+            rtl(
+                "לפי ההנחיה, החשיפה הממוצעת ביממה עם צריכת חשמל טיפוסית מרבית חייבת להיות נמוכה מ-4 mG, כשבשאר שעות היממה "
+                "החשיפה היא 1 mG. לכן השדה המותר סמוך למתקן חשמל בשהייה של T שעות ביממה הוא 72/T + 1. "
+                "החישוב בדוח נעשה בזרם האופייני (60% מהזרם המרבי), כפי שההנחיה קובעת. שעות השהייה לפי סוג החלל: "
+                "בדירה 24 שעות, במשרד או בחנות 9 שעות, במסדרון, לובי, חדר מדרגות, מעלית, חניה ומחסן שעה אחת, "
+                "ובפיר, בחדר טכני ובסביבת ציוד חשמלי אין שהייה."
+            ),
+            Spacer(1, 4),
+            _table(
+                ["שעות שהייה ביממה", *[str(t) for t in (1, 2, 3, 4, 5, 6, 8, 10, 12, 18, 24)]],
+                [["שדה מותר (mG)", *[f"{72 / t + 1:.3g}" for t in (1, 2, 3, 4, 5, 6, 8, 10, 12, 18, 24)]]],
+                [0.2] + [0.8 / 11] * 11,
+            ),
+        ]
 
     # 12-13: a floor holds dozens of rooms, so per floor first, then the highest values.
     per_room = _worst_per_room(results)
@@ -487,29 +504,41 @@ def build_report_pdf(
     story += _views_3d(db, run)
 
     # 16
-    shown = sorted([r for r in continuous if (r.max_mg or 0) >= 1.0], key=lambda r: -(r.max_mg or 0))[:80]
-    shown += sorted([r for r in passing_through if (r.max_mg or 0) >= 10.0], key=lambda r: -(r.max_mg or 0))[:40]
+    def allowed(hours):
+        if hours is None:
+            return "—"
+        if hours <= 0:
+            return "אין שהייה"
+        return f"{72 / hours + 1:.3g}"
+
+    failing_rooms = sorted([r for r in per_room if r.status == "FAIL"], key=lambda r: -(r.max_mg or 0))
+    shown = failing_rooms[:100]
+    shown += sorted([r for r in continuous if r.status != "FAIL" and (r.max_mg or 0) >= 1.0], key=lambda r: -(r.max_mg or 0))[: max(0, 80 - len(shown))]
+    shown += sorted([r for r in passing_through if r.status != "FAIL" and (r.max_mg or 0) >= 10.0], key=lambda r: -(r.max_mg or 0))[:30]
     story += [
         rtl("14. טבלת תוצאות", H1),
-        rtl("חללי שהייה ממושכת שהשדה בהם 1 mG ומעלה, וחללים ללא שהייה ממושכת שהשדה בהם 10 mG ומעלה, מהגבוה לנמוך. כל החללים שמורים במערכת.", SMALL),
+        rtl(
+            "קודם החללים החורגים מהסף, ואחריהם חללי שהייה ממושכת מ-1 mG ומעלה וחללים ללא שהייה ממושכת מ-10 mG ומעלה, מהגבוה לנמוך. כל החללים שמורים במערכת.",
+            SMALL,
+        ),
         Spacer(1, 4),
         _table(
-            ["מס׳", "קומה", "חלל", "סיווג", "מקור עיקרי", "מרחק (מ׳)", "שדה מרבי (mG)", "סטטוס"],
+            ["מס׳", "קומה", "חלל", "שעות שהייה", "סף מותר (mG)", "שדה מרבי (mG)", "מקור עיקרי", "סטטוס"],
             [
                 [
                     str(i),
                     r.floor_name,
                     r.room_name,
-                    OCCUPANCY_LABELS.get(r.occupancy_classification, r.occupancy_classification),
-                    r.dominant_source_tag,
-                    _num(r.dominant_distance_m),
+                    _num(r.occupancy_hours, 0) if r.occupancy_hours is not None else "—",
+                    allowed(r.occupancy_hours),
                     _num(r.max_mg),
+                    r.dominant_source_tag,
                     STATUS_LABELS.get(r.status, r.status),
                 ]
                 for i, r in enumerate(shown, 1)
             ]
             or [["—", "", "אין חללים מעל הספים", "", "", "", "", ""]],
-            [0.05, 0.1, 0.23, 0.13, 0.1, 0.08, 0.1, 0.21],
+            [0.05, 0.11, 0.24, 0.09, 0.1, 0.11, 0.1, 0.2],
         ),
     ]
 

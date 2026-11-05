@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from .. import storage
 from ..audit import invalidate_verification, record
 from .plan_ai import PATH_KINDS
-from ..models import Assumption, Document, ElectricalSource, Floor, PageAnalysis, Project, Room, User
+from ..models import Assumption, Document, ElectricalSource, Floor, OccupancyProfile, PageAnalysis, Project, Room, User
 from .source_model import ensure_details, is_line, set_field
 from .visualization import render_page_png
 
@@ -509,6 +509,24 @@ class Currents:
 # ── Rooms ───────────────────────────────────────────────────────────────
 
 STAY_KINDS = ("APARTMENT_ROOM", "OFFICE", "COMMERCIAL", "PUBLIC_ROOM")
+# Hours a day someone is in each kind of space, for the guideline's 72/T + 1. A flat is
+# lived in around the clock; a workplace for a working day; a passage for the guideline's
+# shortest stay, an hour; a shaft, a technical room or an equipment niche not at all.
+STAY_HOURS = {
+    "APARTMENT_ROOM": 24.0,
+    "OFFICE": 9.0,
+    "COMMERCIAL": 9.0,
+    "PUBLIC_ROOM": 9.0,
+    "CORRIDOR": 1.0,
+    "LOBBY": 1.0,
+    "STAIRS": 1.0,
+    "ELEVATOR": 1.0,
+    "STORAGE": 1.0,
+    "PARKING": 1.0,
+    "SHAFT": 0.0,
+    "TECHNICAL": 0.0,
+}
+USE_HOURS = {"RESIDENTIAL": 24.0, "MIXED": 24.0, "OFFICE": 9.0, "COMMERCIAL": 9.0, "PUBLIC": 9.0, "PARKING": 1.0, "TECHNICAL": 0.0}
 ZONE_LABELS = {
     "APARTMENT_ROOM": "חדר בדירה",
     "OFFICE": "משרד",
@@ -553,8 +571,9 @@ def plans_rooms(documents: dict[str, Document], plans: dict[int, dict]) -> dict[
     return found
 
 
-def _room(project, floor, plan, name, kind, polygon, holes, continuous, area) -> Room:
+def _room(project, floor, plan, name, kind, polygon, holes, continuous, area, hours) -> Room:
     return Room(
+        profile=OccupancyProfile(hours_per_day=hours, source_note="לפי סוג החלל"),
         project_id=project.id,
         floor_id=floor.id,
         name=name[:200],
@@ -606,7 +625,7 @@ def build_rooms(project, floor: Floor, plan: dict, found: dict, equipment: list[
         name = f"{label} (דירה {room['unit']})" if room.get("unit") and room["kind"] == "APARTMENT_ROOM" else label
         made.append(
             _room(project, floor, plan, name, ZONE_LABELS[room["kind"]], [list(c) for c in shape.exterior.coords[:-1]], None,
-                  room["kind"] in STAY_KINDS, shape.area)
+                  room["kind"] in STAY_KINDS, shape.area, STAY_HOURS[room["kind"]])
         )
 
     rooms_area = unary_union(shapes) if shapes else None
@@ -623,7 +642,7 @@ def build_rooms(project, floor: Floor, plan: dict, found: dict, equipment: list[
         rooms_area = part if rooms_area is None else rooms_area.union(part)
         made.append(
             _room(project, floor, plan, f"סביבת ציוד חשמלי {tag}", "אזור טכני", [list(c) for c in part.exterior.coords[:-1]],
-                  [[list(c) for c in ring.coords[:-1]] for ring in part.interiors], False, part.area)
+                  [[list(c) for c in ring.coords[:-1]] for ring in part.interiors], False, part.area, 0.0)
         )
     rest = building.difference(unary_union(shapes)) if shapes else building
     parts = [part for part in (rest.geoms if hasattr(rest, "geoms") else [rest]) if part.geom_type == "Polygon" and part.area >= 1.0]
@@ -633,7 +652,7 @@ def build_rooms(project, floor: Floor, plan: dict, found: dict, equipment: list[
         holes = [[list(c) for c in ring.coords[:-1]] for ring in part.interiors]
         made.append(
             _room(project, floor, plan, name, "שטח כללי", [list(c) for c in part.exterior.coords[:-1]], holes,
-                  continuous, part.area)
+                  continuous, part.area, USE_HOURS.get(plan["use"], 24.0))
         )
     return made
 

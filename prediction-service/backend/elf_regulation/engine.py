@@ -29,6 +29,7 @@ class Rule:
     active: bool
     verified: bool
     superseded_at: date | None = None
+    background_mg: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -102,7 +103,9 @@ def evaluate_room(max_field_mg: float | None, rules: list[Rule], context: RoomCo
                 result.reasons.append(f"{rule.document_name}: חסרות שעות שהייה לחישוב ממוצע זמן")
                 result.checks.append(check)
                 continue
-            normalized = calculate_normalized_exposure(max_field_mg, context.occupancy_hours, rule.averaging_hours)
+            normalized = calculate_normalized_exposure(
+                max_field_mg, context.occupancy_hours, rule.averaging_hours, background_mg=rule.background_mg
+            )
             compared = normalized.normalized_field_mg
             check["normalization"] = {
                 "raw_field_mg": normalized.raw_field_mg,

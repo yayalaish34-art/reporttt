@@ -438,11 +438,7 @@ function Prediction({
           {result?.blockers?.length > 0 && (
             <p className="small">
               הדוח מסומן כטיוטה עד שיושלמו: {summarise(result.blockers)}.{' '}
-              {result.blockers.some((b: any) => b.code === 'REGULATION_RULE') && (
-                <>
-                  את הסף (למשל 4 mG) מפעילים ב<Link href="/regulation/">כללי רגולציה</Link>.
-                </>
-              )}
+              הסף לפי <Link href="/regulation/">מסמך הרגולציה</Link>.
             </p>
           )}
         </section>

@@ -10,7 +10,7 @@ from .config import settings
 from .db import SessionLocal
 from .models import User
 from .security import hash_password
-from .services.regulation_rules import seed_candidates
+from .services.regulation_rules import seed_regulation
 
 
 def bootstrap() -> None:
@@ -27,7 +27,7 @@ def bootstrap() -> None:
                     )
                 )
                 db.commit()
-        seed_candidates(db)
+        seed_regulation(db, f"{(settings.public_url or '').rstrip('/')}/api/regulation/document")
 
 
 if __name__ == "__main__":

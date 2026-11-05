@@ -62,6 +62,7 @@ def _rule_snapshot(row: RegulationRule) -> dict:
         "threshold_unit": row.threshold_unit,
         "threshold_type": row.threshold_type,
         "averaging_hours": row.averaging_hours,
+        "background_mg": row.background_mg,
         "notes": row.notes,
     }
 

@@ -2,6 +2,8 @@
 
 from datetime import date
 
+import pytest
+
 from elf_regulation import FAIL, PASS, REVIEW_REQUIRED, RoomContext, Rule, applicable_rules, evaluate_room
 
 
@@ -95,3 +97,14 @@ def test_all_applicable_documents_must_pass():
     evaluation = evaluate_room(50.0, [lenient, strict], context())
     assert evaluation.status == FAIL
     assert {c["rule_id"]: c["status"] for c in evaluation.checks} == {"a": PASS, "b": FAIL}
+
+
+def test_the_guideline_averages_with_a_1_mg_background():
+    """(B·T + 1·(24−T)) / 24: the field allowed beside an installation is 72/T + 1."""
+    from elf_engine.exposure import calculate_normalized_exposure
+
+    for hours, allowed in [(1, 73), (4, 19), (8, 10), (24, 4)]:
+        at_limit = calculate_normalized_exposure(allowed, hours, 24, background_mg=1.0)
+        assert at_limit.normalized_field_mg == pytest.approx(4.0)
+    nobody_there = calculate_normalized_exposure(500, 0, 24, background_mg=1.0)
+    assert nobody_there.normalized_field_mg == pytest.approx(1.0)

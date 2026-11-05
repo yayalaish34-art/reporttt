@@ -332,6 +332,8 @@ class RegulationRule(Base):
     original_threshold: Mapped[float | None] = mapped_column(Float, nullable=True)
     threshold_type: Mapped[str] = mapped_column(String(30))
     averaging_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # The field taken for the rest of the averaging period (the Israeli guideline: 1 mG).
+    background_mg: Mapped[float | None] = mapped_column(Float, nullable=True)
     notes: Mapped[str] = mapped_column(Text, default="")
     active: Mapped[bool] = mapped_column(Boolean, default=False)
     verified_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)

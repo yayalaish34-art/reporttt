@@ -1,0 +1,34 @@
+{
+  "_comment": "The rules of the Israeli guideline the user supplied (data/regulation/moep-magnetic-field-exposure-2020.pdf). Loaded active and verified; they replace every earlier rule.",
+  "document": {
+    "file": "regulation/moep-magnetic-field-exposure-2020.pdf",
+    "authority": "המשרד להגנת הסביבה, אגף מניעת רעש וקרינה",
+    "document_name": "הגבלת החשיפה לשדה מגנטי כתלות במשך החשיפה",
+    "document_version": "מהדורה 2",
+    "effective_date": "2020-03-11",
+    "instrument_type": "RECOMMENDATION"
+  },
+  "rules": [
+    {
+      "occupancy_type": null,
+      "building_types": [],
+      "threshold": 4.0,
+      "threshold_type": "TIME_AVERAGED",
+      "averaging_hours": 24.0,
+      "background_mg": 1.0,
+      "notes": "החשיפה הממוצעת ביום עם צריכת חשמל טיפוסית מרבית חייבת להיות נמוכה מ-4 mG: (B·T + B0·(24−T)) / 24 < 4, עם B0 = 1 mG. לכן השדה המותר סמוך למתקן בשהייה של T שעות: B < 72/T + 1."
+    },
+    {
+      "occupancy_type": "CONTINUOUS_OCCUPANCY",
+      "building_types": [
+        "School",
+        "Kindergarten"
+      ],
+      "threshold": 4.0,
+      "threshold_type": "INSTANTANEOUS_MAX",
+      "averaging_hours": null,
+      "background_mg": null,
+      "notes": "במוסדות חינוך שבהם לומדים ילדים מתחת לגיל 15: הקרינה בכיתות הלימוד לא תעלה על 4 mG בשום מקום ישיבה של הילדים."
+    }
+  ]
+}
