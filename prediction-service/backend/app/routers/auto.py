@@ -16,6 +16,7 @@ from ..models import CalculationRun, Document, ElectricalSource, PageAnalysis, P
 from ..schemas import ReportIn, RunIn, VerifyIn
 from ..security import current_user
 from ..services import auto_build, plan_ai
+from ..services.job_numbers import ensure_job_number
 from ..services.readiness import project_blockers
 from .calculation import create_run
 from .common import get_owned, get_project
@@ -254,6 +255,12 @@ def finish(project_id: str, user: User = Depends(current_user), db: Session = De
     db.commit()
 
     verify_model(project.id, VerifyIn(verified=True, reason="אישור במסך האוטומטי"), user, db)
+
+    number = ensure_job_number(project, user)
+    if number and number != project.project_number:
+        record(db, user, project.id, "project", project.id, "project_number", project.project_number, number, "Job Number מבקרת המספרים")
+        project.project_number = number
+        db.commit()
 
     scenario = db.scalar(select(Scenario).where(Scenario.project_id == project.id, Scenario.name == AUTO_SCENARIO))
     if scenario is None:

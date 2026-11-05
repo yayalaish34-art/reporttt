@@ -1,9 +1,9 @@
 'use client';
 
 import { FormEvent, useState } from 'react';
-import { CustomerPicker } from '../reports/[id]/customer-picker';
-import { api, errorText } from '@/lib/prediction/api';
-import { BUILDING_LABELS } from '@/lib/prediction/labels';
+import { CustomerPicker } from './customer-picker';
+import { api, errorText } from '@/lib/api';
+import { BUILDING_LABELS } from '@/lib/labels';
 
 type Values = Record<string, string>;
 

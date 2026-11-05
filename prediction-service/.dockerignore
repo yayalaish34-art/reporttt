@@ -1,0 +1,14 @@
+**/node_modules
+**/.next
+web/out
+**/__pycache__
+**/.pytest_cache
+.venv
+backend/.venv
+backend/storage
+backend/local.db
+backend/.env
+backend/tests
+deploy
+docs
+validation_cases

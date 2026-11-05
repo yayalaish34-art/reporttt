@@ -2,20 +2,15 @@
 
 import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
-import { LOGGED_OUT_EVENT, api, errorText } from '@/lib/prediction/api';
-import './prediction.css';
+import { LOGGED_OUT_EVENT, api, errorText } from '@/lib/api';
 
 type User = { id: string; email: string; full_name: string; role: string };
 
 /**
- * The prediction module, with its own login.
- *
- * The reports system has one shared password, or none at all, so it cannot say who
- * did what. A prediction report needs exactly that: the audit trail records who changed
- * each value, and only a named professional may approve. So the engine keeps its own
- * accounts, and this layout asks for one before showing anything.
+ * Everything behind a named login: the audit trail records who changed each value, and
+ * only a named professional may approve a report.
  */
-export default function PredictionLayout({ children }: { children: React.ReactNode }) {
+export function Shell({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null | undefined>(undefined);
 
   const check = useCallback(() => {
@@ -43,10 +38,10 @@ export default function PredictionLayout({ children }: { children: React.ReactNo
       {user && (
         <>
           <nav className="row" aria-label="חיזוי קרינה" style={{ marginBottom: 16 }}>
-            <Link className="btn" href="/prediction" prefetch={false}>
+            <Link className="btn" href="/" prefetch={false}>
               פרויקטים
             </Link>
-            <Link className="btn" href="/prediction/regulation" prefetch={false}>
+            <Link className="btn" href="/regulation/" prefetch={false}>
               כללי רגולציה
             </Link>
             <span className="grow" />
@@ -82,9 +77,9 @@ function Login({ onLogin }: { onLogin: (user: User) => void }) {
 
   return (
     <form className="card" style={{ maxWidth: 400, margin: '6vh auto' }} onSubmit={submit}>
-      <h1>חיזוי קרינה</h1>
+      <h1>Galit ELF Projection</h1>
       <p className="subtitle" style={{ marginBottom: 12 }}>
-        כניסה עם משתמש מערכת החיזוי. כך כל שינוי וכל אישור נרשמים על שם מי שביצע אותם.
+        מערכת חיזוי שדות מגנטיים. כניסה עם משתמש המערכת. כך כל שינוי וכל אישור נרשמים על שם מי שביצע אותם.
       </p>
       {error && <div className="notice error">{error}</div>}
       <label className="field">

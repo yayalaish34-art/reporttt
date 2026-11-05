@@ -1,4 +1,4 @@
-/** Calls to the prediction engine, through `/api/prediction`. */
+/** Calls to the engine, which serves this app from the same address. */
 
 export class ApiError extends Error {
   constructor(
@@ -33,7 +33,7 @@ function describe(detail: unknown): { message: string; missing: string[] } {
 
 export async function api<T = any>(path: string, init?: RequestInit & { json?: unknown }): Promise<T> {
   const { json, ...rest } = init ?? {};
-  const response = await fetch(`/api/prediction${path}`, {
+  const response = await fetch(`/api${path}`, {
     ...rest,
     headers: json !== undefined ? { 'Content-Type': 'application/json', ...rest.headers } : rest.headers,
     body: json !== undefined ? JSON.stringify(json) : rest.body,
@@ -61,5 +61,5 @@ export function errorText(error: unknown): string {
 
 /** A file the engine serves: a plan page, a document, a report. */
 export function fileUrl(path: string): string {
-  return `/api/prediction${path}`;
+  return `/api${path}`;
 }

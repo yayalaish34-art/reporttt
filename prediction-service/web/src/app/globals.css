@@ -1,0 +1,2242 @@
+/* The report system is Hebrew throughout, so the document direction is RTL and
+   every layout rule below is written with that as the default rather than as an
+   override. */
+
+:root {
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --border: #d8dce3;
+  --border-strong: #b9c0ca;
+  --text: #1a1d23;
+  --muted: #5f6773;
+  --accent: #1f5fa8;
+  --accent-soft: #e8f0fa;
+  --danger: #b3261e;
+  --danger-soft: #fdecea;
+  --ok: #1b7f4b;
+  --radius: 8px;
+  --shadow: 0 1px 2px rgb(16 24 40 / 6%), 0 1px 3px rgb(16 24 40 / 10%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', 'Arial Hebrew', Arial, system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ── Shell ────────────────────────────────────────────────────────── */
+
+.shell {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 20px 64px;
+}
+
+.topbar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 24px;
+}
+
+.topbar-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--text);
+}
+
+.brand img {
+  display: block;
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+}
+
+.brand-text {
+  white-space: nowrap;
+}
+
+.topbar nav {
+  display: flex;
+  gap: 4px;
+  margin-inline-start: auto;
+}
+
+.topbar nav a {
+  padding: 6px 12px;
+  border-radius: 6px;
+  text-decoration: none;
+  color: var(--muted);
+}
+
+.topbar nav a:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* ── Typography ───────────────────────────────────────────────────── */
+
+h1 {
+  font-size: 22px;
+  margin: 0 0 4px;
+}
+
+h2 {
+  font-size: 16px;
+  margin: 0;
+}
+
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.page-head .actions {
+  margin-inline-start: auto;
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.subtitle {
+  color: var(--muted);
+  margin: 0;
+}
+
+/* ── Cards ────────────────────────────────────────────────────────── */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: #fbfcfd;
+}
+
+.card-head .hint {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* The whole heading is the fold control: the biggest target on the row, and
+   the one people aim at anyway. It has to look like plain heading text. */
+.card-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.card-toggle:hover h2 {
+  color: var(--accent, #0e5b5f);
+}
+
+.card-caret {
+  color: var(--muted);
+  font-size: 12px;
+  flex: none;
+}
+
+.card-toggle:focus-visible {
+  outline: 2px solid var(--accent, #0e5b5f);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+/* A folded card is a heading and nothing else; without this its bottom border
+   hangs under the title as an empty line. */
+.card:has(.card-body[hidden]) .card-head {
+  border-bottom: 0;
+}
+
+.card-head .spacer {
+  margin-inline-start: auto;
+}
+
+.card-body {
+  padding: 16px;
+}
+
+/* ── Forms ────────────────────────────────────────────────────────── */
+
+.grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.field.wide {
+  grid-column: 1 / -1;
+}
+
+label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+  padding: 7px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  width: 100%;
+  min-width: 0;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+  border-color: var(--accent);
+}
+
+textarea {
+  resize: vertical;
+  min-height: 68px;
+}
+
+/* Numeric measurement values read left-to-right even in an RTL document. */
+input.ltr {
+  direction: ltr;
+  text-align: right;
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────── */
+
+button,
+.btn {
+  font: inherit;
+  padding: 7px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+button:hover:not(:disabled),
+.btn:hover {
+  background: var(--bg);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #1a4f8c;
+}
+
+.btn-danger {
+  color: var(--danger);
+  border-color: #e6b4b0;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--danger-soft);
+}
+
+.btn-sm {
+  padding: 4px 9px;
+  font-size: 12px;
+}
+
+/* ── Tables ───────────────────────────────────────────────────────── */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  text-align: right;
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+th {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+  background: #fbfcfd;
+  white-space: nowrap;
+}
+
+tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+td input {
+  padding: 5px 8px;
+}
+
+.row-num {
+  color: var(--muted);
+  font-size: 12px;
+  width: 34px;
+  text-align: center;
+}
+
+/* ── Misc ─────────────────────────────────────────────────────────── */
+
+.empty {
+  padding: 36px 16px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.badge.ok {
+  background: #e6f4ec;
+  color: var(--ok);
+}
+
+.notice {
+  padding: 10px 14px;
+  border-radius: 6px;
+  margin-bottom: 16px;
+  border: 1px solid transparent;
+}
+
+.notice.error {
+  background: var(--danger-soft);
+  border-color: #f0c2be;
+  color: var(--danger);
+}
+
+.notice.ok {
+  background: #e6f4ec;
+  border-color: #bfe0cd;
+  color: var(--ok);
+}
+
+.notice ul {
+  margin: 6px 0 0;
+  padding-inline-start: 20px;
+}
+
+.mono {
+  font-family: 'Cascadia Mono', Consolas, monospace;
+  font-size: 12px;
+  direction: ltr;
+  display: inline-block;
+}
+
+.list-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.list-row:last-child {
+  border-bottom: none;
+}
+
+.list-row .grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.list-row .title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list-row .meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.photo-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+}
+
+.photo-card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.photo-card img {
+  width: 100%;
+  height: 130px;
+  object-fit: cover;
+  display: block;
+  background: var(--bg);
+}
+
+.photo-card .body {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* The IAQ appendix mirrors the printed result while it is being edited: the
+   automatic number/title is prominent above a larger preview, so the surveyor
+   can verify both the order and the caption before producing the document. */
+.iaq-photo-grid {
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+}
+
+.iaq-photo-card .iaq-photo-title {
+  min-height: 48px;
+  padding: 10px 12px;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.45;
+  text-align: right;
+}
+
+.iaq-photo-card img {
+  height: 230px;
+}
+
+.sticky-actions {
+  position: sticky;
+  bottom: 0;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 -1px 3px rgb(16 24 40 / 8%);
+  margin-top: 24px;
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+
+/* ── Customer picker ──────────────────────────────────────────────── */
+
+.picker-results {
+  position: absolute;
+  top: 100%;
+  inset-inline: 0;
+  z-index: 20;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgb(16 24 40 / 12%);
+  max-height: 300px;
+  overflow-y: auto;
+  margin-top: 4px;
+}
+
+.picker-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  border: none;
+  border-radius: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 9px 12px;
+  text-align: right;
+}
+
+.picker-row:last-child {
+  border-bottom: none;
+}
+
+.picker-title {
+  font-weight: 600;
+}
+
+.picker-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.picker-empty {
+  padding: 14px;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* ── Toggle ───────────────────────────────────────────────────────── */
+
+.toggle {
+  display: inline-flex;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.toggle button {
+  border: none;
+  border-radius: 0;
+  padding: 7px 18px;
+}
+
+.toggle button + button {
+  border-inline-start: 1px solid var(--border-strong);
+}
+
+.toggle button.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.toggle button.active:hover {
+  background: #1a4f8c;
+}
+
+/* ── Previews ─────────────────────────────────────────────────────── */
+
+.header-preview,
+.recipient-preview {
+  border: 1px dashed var(--border-strong);
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: #fbfcfd;
+  font-size: 13px;
+}
+
+.header-preview {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  color: var(--muted);
+}
+
+.recipient-preview {
+  line-height: 1.7;
+}
+
+/* Matches the bold-and-underlined styling these two lines carry in the
+   template, so the preview shows what the document will actually look like. */
+.recipient-preview .emphasis {
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+/* A composed sentence, shown as it will print in the document. */
+.sentence-readonly {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 11px;
+  background: #fbfcfd;
+  color: var(--text);
+  line-height: 1.6;
+}
+
+/* ── Table type chooser ───────────────────────────────────────────── */
+
+.type-chooser {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  margin-bottom: 16px;
+}
+
+.type-chooser button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 12px 14px;
+  text-align: right;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  white-space: normal;
+}
+
+.type-chooser button:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.type-chooser strong {
+  font-size: 14px;
+}
+
+.type-chooser span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.type-chooser .muted {
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.group-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 18px 0 10px;
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.group-heading::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.protocol-block {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+
+.signature-thumb {
+  height: 26px;
+  width: auto;
+  max-width: 70px;
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: #fff;
+}
+
+.signature-preview {
+  height: 44px;
+  width: 110px;
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #fff;
+  flex-shrink: 0;
+}
+
+.steps {
+  margin: 0 0 16px;
+  padding-inline-start: 20px;
+  line-height: 1.8;
+}
+
+.steps li {
+  margin-bottom: 6px;
+}
+
+/* The facts a drafted conclusion was based on, shown for checking. */
+.findings {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fbfcfd;
+  padding: 10px 12px;
+}
+
+.findings summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.findings pre {
+  margin: 10px 0 0;
+  white-space: pre-wrap;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+/* ── RF table ─────────────────────────────────────────────────────── */
+
+.occupancy-toggle {
+  width: 100%;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.badge.bad {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* The verdict and how far below the threshold the reading sits: a bare
+   "עומד" hides the difference between 0.4% and 99% of the limit. */
+.verdict-percent {
+  display: block;
+  font-size: 10px;
+  opacity: 0.75;
+  font-weight: 400;
+}
+
+.verdict-pending {
+  color: var(--muted);
+}
+
+.row-incomplete td {
+  background: #fffaf7;
+}
+
+.row-incomplete input::placeholder {
+  color: var(--danger);
+  opacity: 0.6;
+}
+
+/* A value the system computed rather than the surveyor typed. */
+.derived-value {
+  display: inline-flex;
+  flex-direction: column;
+  font-weight: 600;
+  direction: ltr;
+}
+
+.derived-note {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+td select {
+  padding: 5px 6px;
+  font-size: 13px;
+}
+
+/* ── Phones ───────────────────────────────────────────────────────────
+   The app is used standing in a plant room as often as at a desk, so the
+   narrow layout is not an afterthought. Three things were wrong on a
+   390px screen: the page scrolled sideways, the action bar's buttons ran
+   off the edge, and every control was 37px tall against the 44px that a
+   thumb actually needs. */
+
+@media (max-width: 640px) {
+  .shell {
+    padding: 0 12px 48px;
+  }
+
+  /* One column: two 220px columns do not fit, and the grid was what pushed
+     the document wider than the window. */
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* The bar wraps instead of overflowing, and each control is a full-width
+     row when it has to be. */
+  .sticky-actions {
+    flex-wrap: wrap;
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .sticky-actions .meta {
+    flex-basis: 100%;
+    order: -1;
+  }
+
+  .sticky-actions button,
+  .sticky-actions .btn,
+  .sticky-actions .btn-primary,
+  .sticky-actions a {
+    flex: 1 1 auto;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Anything tapped gets a thumb-sized target. */
+  button,
+  .btn,
+  .btn-primary,
+  .btn-sm,
+  select,
+  input {
+    min-height: 44px;
+  }
+
+  /* Except inside the measurement tables, where 44px per cell would make a
+     twelve-column table unreadable — those scroll horizontally by design. */
+  td input,
+  td select,
+  td button {
+    min-height: 34px;
+  }
+
+  .card-head {
+    flex-wrap: wrap;
+  }
+
+  .card-head .spacer {
+    margin-inline-start: 0;
+    flex-basis: 100%;
+  }
+}
+
+/* ── Wizard ───────────────────────────────────────────────────────── */
+/*
+ * A report is written one step at a time, each step filling the screen. The
+ * rules here are about touch: the step bar and both controls are thumb-sized,
+ * and the panel is given room rather than boxed into a card.
+ */
+
+.wizard {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* The step bar scrolls sideways rather than wrapping: a wrapped bar reflows as
+   steps are completed and the row under the thumb changes meaning mid-tap. */
+.wizard-steps {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+  scroll-snap-type: x proximity;
+}
+
+.wizard-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.wizard-step:hover {
+  border-color: var(--border-strong);
+}
+
+.wizard-step.current {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.wizard-step.done {
+  color: var(--ok);
+}
+
+.wizard-step-num {
+  display: grid;
+  place-items: center;
+  inline-size: 22px;
+  block-size: 22px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.wizard-step.current .wizard-step-num {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.wizard-step.done .wizard-step-num {
+  background: #e6f4ec;
+  border-color: #bfe0cd;
+  color: var(--ok);
+}
+
+.wizard-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 20px;
+  min-block-size: 50vh;
+}
+
+.wizard-head {
+  margin-bottom: 16px;
+}
+
+.wizard-head h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.wizard-head .hint {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.notice.warn {
+  background: #fdf6e3;
+  border-color: #e8d9a8;
+  color: #7a5c11;
+}
+
+/* Sticky so "המשך" is reachable without scrolling to the end of a long step. */
+.wizard-actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 -1px 3px rgb(16 24 40 / 8%);
+}
+
+.wizard-progress {
+  color: var(--muted);
+  font-size: 13px;
+  margin-inline: auto;
+}
+
+.wizard-actions .btn-primary,
+.wizard-actions .btn {
+  padding: 12px 22px;
+  font-size: 16px;
+}
+
+.wizard-next {
+  min-inline-size: 140px;
+}
+
+@media (max-width: 640px) {
+  .wizard-panel {
+    padding: 14px;
+    border-radius: 0;
+    border-inline: 0;
+    /* Full-bleed: on a phone the step is the screen, not a card on a page. */
+    margin-inline: -12px;
+  }
+
+  .wizard-step {
+    scroll-snap-align: center;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    min-inline-size: 68px;
+    min-block-size: 58px;
+    padding: 6px 8px;
+  }
+
+  /* Keep the step names visible so the strip works as direct navigation,
+     especially when someone jumps back from the final review. */
+  .wizard-step-title {
+    display: block;
+    max-inline-size: 86px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 12px;
+    line-height: 1.1;
+  }
+
+  .wizard-actions {
+    /* The two controls are the whole row; the counter sits above them. */
+    flex-wrap: wrap;
+    justify-content: space-between;
+  }
+
+  .wizard-progress {
+    order: -1;
+    inline-size: 100%;
+    text-align: center;
+    margin-inline: 0;
+  }
+
+  .wizard-actions .btn-primary,
+  .wizard-actions .btn {
+    flex: 1;
+    text-align: center;
+    min-block-size: 48px;
+    padding-inline: 10px;
+  }
+
+  .wizard-actions > .btn:disabled {
+    display: none;
+  }
+}
+
+/* Sections that lose their card inside the wizard keep their controls, which move
+   from the card's title bar to the top of the step. */
+.photos-bare-actions,
+.protocols-bare-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+/* ── Drop zone ── the laboratory PDF is dragged in here; a tap opens the file picker. */
+.drop-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 120px;
+  margin: 16px 0;
+  padding: 20px 16px;
+  text-align: center;
+  border: 2px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.drop-zone:hover,
+.drop-zone:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  outline: none;
+}
+
+.drop-zone.over {
+  border-color: var(--accent);
+  border-style: solid;
+  background: var(--accent-soft);
+}
+
+.drop-zone.busy {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+/* The last step: what the report will say, read rather than filled in. */
+.summary {
+  margin: 0;
+  display: grid;
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.summary > div {
+  display: flex;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--surface);
+}
+
+.summary dt {
+  color: var(--muted);
+  flex: 0 0 40%;
+  max-inline-size: 200px;
+}
+
+.summary dd {
+  margin: 0;
+  font-weight: 500;
+}
+
+/* ── Modal ────────────────────────────────────────────────────────── */
+
+.modal {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 30px rgb(16 24 40 / 18%);
+  padding: 0;
+  inline-size: min(420px, calc(100vw - 32px));
+  color: var(--text);
+  background: var(--surface);
+}
+
+.modal::backdrop {
+  background: rgb(16 24 40 / 45%);
+}
+
+.modal-body {
+  padding: 20px;
+}
+
+.modal-body h3 {
+  margin: 0 0 12px;
+  font-size: 17px;
+}
+
+.modal-body input {
+  inline-size: 100%;
+}
+
+/*
+ * A tick box is not a text field, and the rule above stretches it across the panel.
+ * Exempting it by type keeps the rest of the modal's fields full-width as intended.
+ */
+.modal-body input[type='checkbox'] {
+  inline-size: auto;
+}
+
+/* ── Copying ELF points into the RF pass ──────────────────────────── */
+
+/*
+ * The list of ELF tables offered at the crossing. It is scrollable because a survey
+ * of a whole building has a table per floor per source, and the confirm button must
+ * stay reachable without the prompt growing past the screen.
+ */
+.copy-points-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-block-size: 45vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px;
+}
+
+.copy-points-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.copy-points-item:hover {
+  background: var(--bg);
+}
+
+/* The box sits on the first line of the label, not centred against a wrapped block. */
+.copy-points-item input[type='checkbox'] {
+  margin-block-start: 3px;
+  flex: none;
+}
+
+.copy-points-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-inline-size: 0;
+}
+
+/* The point list under each heading is a reminder, so it is allowed to wrap freely. */
+.copy-points-text .hint {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ── Phone ────────────────────────────────────────────────────────── */
+/*
+ * The reports are written on a phone, standing in a plant room. What follows is
+ * about that: nothing under a thumb, nothing that zooms unexpectedly, and no
+ * horizontal scrolling of the page itself.
+ */
+
+@media (max-width: 640px) {
+  /*
+   * 16px on every field, because iOS zooms the page whenever a focused input is
+   * smaller than that — and having zoomed, it does not zoom back. One tap into a
+   * text box left the form magnified and the surveyor panning to find the next
+   * one. The rest of the page stays at its own size; this is only the controls.
+   */
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+
+  /* Numeric fields get a numeric keypad rather than the full keyboard. */
+  input.ltr {
+    font-size: 16px;
+  }
+
+  /* Under a notch, the sticky bars would otherwise sit beneath the home indicator. */
+  .wizard-actions,
+  .sticky-actions {
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+
+  .shell {
+    padding-inline: max(12px, env(safe-area-inset-left), env(safe-area-inset-right));
+  }
+
+  /*
+   * The measurement tables are the one thing that cannot fit a phone: seven columns
+   * of readings. They scroll sideways inside their own box — but the box has to be
+   * told it may be narrower than its contents, or the grid it sits in stretches to
+   * the widest row and takes the whole page with it.
+   */
+  .table-scroll {
+    max-inline-size: 100%;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .wizard-body,
+  .wizard-panel {
+    min-inline-size: 0;
+  }
+
+  /* A cell that holds a description needs room to be read; the numeric ones do not. */
+  td input {
+    min-inline-size: 90px;
+  }
+
+  /* Photos two-up rather than one enormous column. */
+  .photo-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* The customer search results must not run off the edge of the screen. */
+  .picker-results {
+    max-inline-size: calc(100vw - 32px);
+  }
+}
+
+/*
+ * Nothing on the page scrolls sideways except the things that opt in.
+ *
+ * A single wide element — a table, a long unbroken reference number — otherwise makes
+ * the whole document scrollable, and every vertical swipe drifts off-axis.
+ */
+html,
+body {
+  overflow-x: hidden;
+}
+
+/* Long values wrap instead of widening the page. */
+.summary dd,
+.field .hint {
+  overflow-wrap: anywhere;
+}
+
+/* ── Focus mode ───────────────────────────────────────────────────── */
+/*
+ * While a report is being filled in, the screen belongs to the report.
+ *
+ * The masthead, the logo and the section navigation are all routes *away* from the
+ * thing in hand, and on a phone they cost the top of a screen that has a measurement
+ * table to fit. What replaces them is one thin line: the way back, and the reference
+ * number that identifies which report this is.
+ */
+
+body.focused .topbar {
+  display: none;
+}
+
+body.focused .shell {
+  padding-top: 12px;
+}
+
+.focus-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+/*
+ * The way out of a report.
+ *
+ * It was grey text with no edge to it, which on a phone reads as a caption rather than a
+ * control — so the only obvious route out of an open report was the browser's own back
+ * gesture. Given a border and the page's own surface it looks like what it is: the
+ * button that leaves.
+ */
+.focus-back {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+  padding: 7px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--surface);
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.focus-back:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.focus-ref {
+  color: var(--muted);
+  margin-inline-start: auto;
+}
+
+/*
+ * The fields sit on white; everything around them recedes.
+ *
+ * The panel was white on a near-white page, so the thing to be filled in had no more
+ * visual weight than the margin beside it. Darkening the ground behind it — and only in
+ * focus mode, where there is nothing else on screen to balance — makes the panel read as
+ * the surface being written on.
+ */
+body.focused {
+  background: #e7e9ee;
+}
+
+body.focused .wizard-panel {
+  border-color: var(--border-strong);
+  box-shadow: 0 2px 10px rgb(16 24 40 / 10%);
+}
+
+/* The fields themselves get a little more edge, for the same reason. */
+body.focused input,
+body.focused textarea,
+body.focused select {
+  background: var(--surface);
+}
+
+body.focused input:focus,
+body.focused textarea:focus,
+body.focused select:focus {
+  /* The field being typed into is the one thing that should stand out. */
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+@media (max-width: 640px) {
+  body.focused .shell {
+    padding-top: 8px;
+  }
+
+  /* On a phone the bar is the only thing above the step, so it stays compact. */
+  .focus-bar {
+    margin-bottom: 8px;
+  }
+}
+
+/* ── Tick lists ───────────────────────────────────────────────────── */
+/*
+ * Several options ticked at once — the radiation sources, and anything like them.
+ *
+ * Each row is one tap target the width of the list, so the box and its label are one
+ * thing rather than a small box beside some text. The box itself is given a fixed size:
+ * the phone rule that makes every control 44px tall applies to `input` too, and a
+ * checkbox stretched to 44px square — then to whatever width its row allowed — which is
+ * why the boxes came out different sizes from each other.
+ */
+
+.check-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 0;
+}
+
+.check-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 400;
+  cursor: pointer;
+  padding: 8px 6px;
+  margin-inline: -6px;
+  border-radius: 6px;
+  min-height: 40px;
+}
+
+.check-item:hover {
+  background: var(--bg);
+}
+
+/* Fixed, and immune to the 44px phone rule — every box the same size as every other. */
+.check-item input[type='checkbox'],
+.check-item input[type='radio'] {
+  inline-size: 20px;
+  block-size: 20px;
+  min-height: 0;
+  min-width: 0;
+  width: auto;
+  flex: 0 0 auto;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+/* Wider than a phone, the options sit two or three to a row again. */
+@media (min-width: 641px) {
+  .check-list {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 2px 18px;
+  }
+
+  .check-item {
+    min-height: 32px;
+    padding: 4px 6px;
+  }
+}
+
+/* ── Photo button ─────────────────────────────────────────────────── */
+/*
+ * Sits under each measurement table: photograph the source this table describes.
+ * The camera button leads, because that is what is wanted while standing in front
+ * of the thing being measured.
+ */
+
+.photo-button {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+}
+
+.photo-button .hint {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.photo-button .error-text {
+  color: var(--danger);
+}
+
+@media (max-width: 640px) {
+  /* Thumb-sized, and the camera gets the wider half. */
+  .photo-button button {
+    flex: 1 1 auto;
+    min-height: 44px;
+  }
+}
+
+.summary-heading {
+  margin: 24px 0 12px;
+  font-size: 16px;
+}
+
+/*
+ * Adding the next table sits at the foot of the last one, beside its camera button —
+ * where the thumb is when a table has just been filled in.
+ */
+.table-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-inline-start: auto;
+}
+
+@media (max-width: 640px) {
+  .table-actions {
+    inline-size: 100%;
+    margin-inline-start: 0;
+  }
+
+  .table-actions button {
+    flex: 1 1 auto;
+    min-height: 44px;
+  }
+}
+
+/* ── Which field, right now ───────────────────────────────────────── */
+/*
+ * On a phone a step is a column of look-alike boxes, and the surveyor — one hand on the
+ * phone, one on the meter — has to work out where they are in it every time they glance
+ * back down. The step already says what it is for; what it does not say is which of its
+ * fields is in hand and which are still waiting.
+ *
+ * Three signals, all of them passive. Nothing here blocks, nothing pops up, and none of
+ * it applies on a desktop, where the whole step is visible at once and the eye does this
+ * work unaided.
+ */
+
+@media (max-width: 640px) {
+  /*
+   * The field being typed into is drawn as a card and the rest recede.
+   *
+   * `:focus-within` on the wrapper rather than `:focus` on the input, so the label moves
+   * with its own box — a label that stays grey while its input is live is the thing that
+   * makes a column of fields hard to read on a small screen.
+   */
+  .field {
+    padding: 10px 12px;
+    margin-inline: -12px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+  }
+
+  .field:focus-within {
+    background: var(--surface);
+    border-color: var(--accent);
+    box-shadow: 0 1px 8px rgb(0 0 0 / 0.06);
+  }
+
+  /* Inside a measurement table a cell has no room to spare and the negative margin
+     would pull the field out over its neighbour. The tables carry their own reading
+     order — a row at a time — and do not need this. */
+  td .field {
+    padding: 0;
+    margin-inline: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+  }
+
+  /* Bigger and darker than the 12px grey a desktop can afford: on a phone the label is
+     read at arm's length, in daylight, and it is the only thing saying what the box
+     under it wants. */
+  .field label {
+    font-size: 13px;
+    color: var(--text);
+  }
+
+  .field:focus-within > label {
+    color: var(--accent);
+  }
+
+  /*
+   * A field still waiting gets a mark down its edge.
+   *
+   * Only fields told to expect a value carry it (`.field.needed`), and it goes the
+   * moment something is typed — so the column reads as "these still want me" rather
+   * than as an error. It is deliberately not red: nothing here is wrong yet.
+   */
+  .field.needed {
+    border-inline-start: 3px solid var(--border-strong);
+    border-start-start-radius: 10px;
+    border-end-start-radius: 10px;
+  }
+
+  .field.needed:focus-within {
+    border-inline-start-color: var(--accent);
+  }
+
+  /* The hint belongs to the field in hand. On the others it is one more grey line in a
+     column that already has too many, so it is kept for the moment it is useful. */
+  .field .hint {
+    display: none;
+  }
+
+  .field:focus-within .hint {
+    display: block;
+  }
+}
+
+/*
+ * How far through the step, in one line.
+ *
+ * "שלב 2 מתוך 6" says where the step sits; this says where the surveyor sits inside it,
+ * which on a long step is the question actually being asked. Counted from the fields
+ * that declared themselves needed, so it never claims a step is unfinished over a field
+ * nobody has to fill.
+ */
+.step-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+.step-progress-bar {
+  flex: 1;
+  block-size: 4px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.step-progress-fill {
+  display: block;
+  block-size: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: inline-size 0.2s ease;
+}
+
+.step-progress.done .step-progress-fill {
+  background: var(--ok);
+}
+
+/* On a desktop the step is visible whole and the count is noise. */
+@media (min-width: 641px) {
+  .step-progress {
+    display: none;
+  }
+}
+
+/* ── Save indicator ───────────────────────────────────────────────── */
+/*
+ * Sits beside "שלב 2 מתוך 6" and says whether the work is stored.
+ *
+ * Quiet by design. A surveyor who has to watch this is being asked to do the system's
+ * worrying for it — so "שומר…" and "נשמר" are small and grey, and only a failed save
+ * takes the danger colour. That is the one state where carrying on typing means carrying
+ * on losing work.
+ */
+
+.save-indicator {
+  margin-inline-start: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.save-indicator.error {
+  color: var(--danger);
+  font-weight: 600;
+  white-space: normal;
+}
+
+@media (max-width: 640px) {
+  /* The progress line is its own row on a phone; the indicator follows it rather than
+     competing with it for the width. */
+  .save-indicator {
+    display: block;
+    margin-inline-start: 0;
+    margin-top: 2px;
+  }
+}
+
+/* ── Measurement point description, edited full-screen ──────────────
+ *
+ * The descriptions run to sixty characters ("בחזית לוח החשמל - בוצעה סריקה איטית
+ * ובנקודה החמה נמדדה") inside a table column that shows about fifteen of them, so the
+ * surveyor could not read what a row said without selecting the text and scrolling
+ * through it. The cell is now a handle that opens the whole thing.
+ */
+
+.modal.wide {
+  inline-size: min(720px, calc(100vw - 24px));
+}
+
+/* The cell reads as something to press rather than something to type into. */
+.tap-to-edit {
+  cursor: pointer;
+  background: var(--surface);
+}
+
+.point-editor {
+  display: grid;
+  gap: 12px;
+}
+
+.point-editor textarea {
+  inline-size: 100%;
+  resize: vertical;
+  font: inherit;
+  line-height: 1.5;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  background: var(--surface);
+}
+
+/* Each option on its own line, whole: a list that truncates would reproduce the
+   problem this screen exists to solve. */
+.point-options {
+  display: grid;
+  gap: 6px;
+  max-block-size: 40vh;
+  overflow-y: auto;
+}
+
+.point-option {
+  text-align: start;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.point-option.active {
+  border-color: var(--accent, #2563eb);
+  font-weight: 600;
+}
+
+.point-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* ── Taking a photograph with a webcam ─────────────────────────────
+ *
+ * The desktop half of the camera button: a phone opens its own camera app, a
+ * laptop gets this preview instead. See `camera-capture.tsx`.
+ */
+
+.camera-frame {
+  /* Black rather than the page colour: the preview fills it only once the stream
+     arrives, and a white gap in the meantime reads as a broken picture. */
+  background: #000;
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-block-end: 14px;
+  /* Holds the panel's height steady while the camera warms up, so the buttons do
+     not jump down the moment the first frame lands. */
+  aspect-ratio: 4 / 3;
+}
+
+.camera-frame video {
+  inline-size: 100%;
+  block-size: 100%;
+  /* Fills the frame whatever the camera's own aspect ratio is. The capture itself
+     is taken from the full video frame, not from what is cropped here. */
+  object-fit: cover;
+  display: block;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* ── The drafts list, on a phone ──────────────────────────────────── */
+/*
+ * A row is a title and its controls, laid out in one line. On a phone the controls —
+ * each thumb-sized and each refusing to wrap — take the width, and the title is left
+ * with whatever remains: in practice an ellipsis, so the list showed no report names
+ * at all.
+ *
+ * The row becomes two: what the report is, then what can be done with it.
+ */
+
+@media (max-width: 640px) {
+  .list-row {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 14px 12px;
+  }
+
+  /* The title takes the first line to itself, and wraps rather than truncating — a
+     report is identified by its site, and the site is what an ellipsis eats first. */
+  .list-row .grow {
+    flex-basis: 100%;
+  }
+
+  .list-row .title {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    line-height: 1.35;
+  }
+
+  .list-row .title a {
+    /* The whole title is the tap target, not just the text that fits one line. */
+    display: block;
+    padding: 2px 0;
+  }
+
+  .list-row .meta {
+    margin-top: 2px;
+  }
+
+  /* The controls share the second line evenly, each still thumb-sized. */
+  .list-row .btn,
+  .list-row .btn-sm,
+  .list-row > a,
+  .list-row > button {
+    flex: 1 1 auto;
+    min-height: 44px;
+    justify-content: center;
+  }
+}
+
+/* ── The masthead, on a phone ─────────────────────────────────────── */
+/*
+ * Two things and no more: the mark, and which kind of report is open. They used to share
+ * one line with a three-item nav and a company name, and on a 390px screen the row was
+ * a squeeze of half-legible text.
+ *
+ * The identity keeps the first line to itself; the nav becomes its own row underneath,
+ * where each link is a real target rather than a word wedged against the next.
+ */
+
+@media (max-width: 640px) {
+  .topbar {
+    margin-bottom: 16px;
+  }
+
+  .topbar-inner {
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 10px 12px;
+    padding-inline: max(12px, env(safe-area-inset-left), env(safe-area-inset-right));
+  }
+
+  .brand {
+    flex-basis: 100%;
+    font-size: 17px;
+  }
+
+  /* The nav spans the width and splits it evenly — three equal, thumb-sized tabs. */
+  .topbar nav {
+    flex-basis: 100%;
+    margin-inline-start: 0;
+    gap: 6px;
+  }
+
+  .topbar nav a {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+  }
+}
+
+/* ── Start screen ─────────────────────────────────────────────────── */
+
+/*
+ * The three surveys, as the first thing the system shows.
+ *
+ * One column on a phone and a row on anything wider: the cards are the primary
+ * action of the whole application, so they are large targets rather than a list,
+ * and on the phone this is filled in on they should each fill the thumb's reach.
+ */
+.start-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 1fr;
+}
+
+/*
+ * Two across on a tablet, four on a desktop.
+ *
+ * This was a hard-coded `repeat(3, 1fr)`, which was right while there were three
+ * surveys and wrong the moment a fourth arrived: the mould card dropped onto a row
+ * of its own, stretched to a third of the width, and read as an afterthought rather
+ * than as one of the four things the app does. `auto-fit` with a floor lets the row
+ * decide for itself, so the next department needs no change here.
+ */
+@media (min-width: 720px) {
+  .start-grid {
+    grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+  }
+}
+
+.start-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.start-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.start-icon {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.start-card h2 {
+  margin: 0 0 2px;
+  font-size: 1.1rem;
+}
+
+.start-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+/* Full width and tall enough to be hit one-handed, which is how it is used. */
+.start-action {
+  display: block;
+  text-align: center;
+  text-decoration: none;
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-weight: 600;
+  /* A long report title must not push the button wider than its card. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * "כל הדוחות" — a second button, not a footnote.
+ *
+ * It was a small grey link under two large targets, which is the wrong weight for
+ * it: opening an existing report is half of what this screen is for. `margin-top`
+ * pushes it to the foot of the card so the three cards line up however long their
+ * descriptions run.
+ */
+.start-secondary {
+  margin-top: auto;
+}
+
+/* ── Contact choice ───────────────────────────────────────────────── */
+
+/*
+ * The people at the company just picked.
+ *
+ * A row each rather than a dropdown: a company routinely has several contacts and
+ * the report is addressed to whichever of them ordered this survey. Collapsed into
+ * a <select> that choice was invisible, and the primary contact won by default —
+ * which is how a report went out addressed to the wrong person.
+ */
+.contact-choice {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.contact-choice > label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.contact-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* Long enough to scroll rather than push the rest of the form off the screen. */
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.contact-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 10px;
+  text-align: start;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  /* A comfortable thumb target — this is tapped on a phone. */
+  min-height: 48px;
+}
+
+.contact-row:hover {
+  border-color: var(--accent);
+}
+
+.contact-row.chosen {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.contact-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
+.contact-meta {
+  color: var(--muted);
+  font-size: 0.78rem;
+  /* Contact details are Latin and numeric; letting them run RTL scrambles them. */
+  direction: ltr;
+  text-align: start;
+}
+
+/* ── Building photographs ─────────────────────────────────────────── */
+
+/*
+ * The camera that sits under a building's answers.
+ *
+ * Set off from the fields above it by a rule rather than a card of its own: it is
+ * part of describing this building, not a separate thing to be filled in, and the
+ * card is already inside another card.
+ */
+.building-photos {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+/* ── שם המקור המקרין: שדה חובה שנשכח ─────────────────────────────── */
+/*
+ * The source name is the one field a surveyor keeps leaving empty: it looks
+ * like every other input, and once its table is collapsed the omission is
+ * invisible until the report refuses to be issued. So while it is empty it is
+ * drawn as a gap to be filled — red frame, tinted ground, an explicit demand
+ * under it — and the moment something is typed all of that disappears rather
+ * than nagging on.
+ */
+.field.required-empty > label {
+  color: var(--danger);
+}
+
+.field.required-empty > label::after {
+  content: ' *';
+}
+
+.field.required-empty > input {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.field.required-empty > input::placeholder {
+  color: var(--danger);
+  opacity: 0.75;
+}
+
+.field.required-empty > input:focus {
+  outline-color: var(--danger);
+}
+
+.field-demand {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+/* The same omission, seen from a collapsed table header. */
+.protocol-block .title-missing {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.antenna-radius-value {
+  display: flex;
+  align-items: center;
+  min-block-size: 44px;
+  padding-inline: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+/* On a phone, turn the wide RF/ELF grids into labelled measurement cards.
+   Every value stays visible together, so the surveyor no longer has to pan
+   sideways to match a reading with its distance or verdict. */
+@media (max-width: 640px) {
+  .measurement-table-scroll {
+    overflow: visible;
+    max-inline-size: 100%;
+  }
+
+  .measurement-table {
+    display: block;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  /* Keep headers available to assistive technology while replacing their
+     visual layout with the per-cell labels below. */
+  .measurement-table thead {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .measurement-table tbody {
+    display: grid;
+    gap: 10px;
+  }
+
+  .measurement-table tbody tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px 10px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+  }
+
+  .measurement-table tbody tr.row-incomplete {
+    border-color: #e7c7a0;
+    background: #fffdf8;
+  }
+
+  .measurement-table tbody td {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 4px;
+    min-inline-size: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .measurement-table tbody td[data-label]::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.25;
+  }
+
+  .measurement-table tbody td.row-num {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding-block-end: 6px;
+    border-block-end: 1px solid var(--border);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 700;
+    text-align: start;
+  }
+
+  .measurement-table tbody td[data-label="תיאור נקודת המדידה"] {
+    grid-column: 1 / -1;
+  }
+
+  .measurement-table tbody td.row-delete-cell {
+    grid-column: 1 / -1;
+    align-items: flex-end;
+  }
+
+  .measurement-table tbody td.row-delete-cell button {
+    min-inline-size: 48px;
+    min-block-size: 44px;
+  }
+
+  .measurement-table .occupancy-toggle {
+    min-block-size: 44px;
+    justify-content: center;
+    white-space: normal;
+  }
+
+  /* These are cards on phones, so the old compact table-cell sizing no
+     longer applies. Keep the whole field easy to tap without widening it. */
+  .measurement-table input,
+  .measurement-table select,
+  .measurement-table button {
+    min-block-size: 44px;
+    min-inline-size: 0;
+    font-size: 16px;
+  }
+
+  .point-editor textarea {
+    font-size: 16px;
+  }
+
+  .measurement-table .badge,
+  .measurement-table .derived-value,
+  .measurement-table .verdict-pending {
+    min-block-size: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+}

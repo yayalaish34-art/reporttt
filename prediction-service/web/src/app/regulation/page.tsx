@@ -1,8 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { ApiError, api, errorText } from '@/lib/prediction/api';
-import { BUILDING_LABELS, INSTRUMENT_LABELS, OCCUPANCY_LABELS, label } from '@/lib/prediction/labels';
+import { ApiError, api, errorText } from '@/lib/api';
+import { BUILDING_LABELS, INSTRUMENT_LABELS, OCCUPANCY_LABELS, label } from '@/lib/labels';
 
 const EMPTY = {
   document_name: '',

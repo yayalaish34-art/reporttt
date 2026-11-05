@@ -1,5 +1,5 @@
 {
-  "name": "galit-elf-web",
+  "name": "galit-elf-projection-web",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -9,7 +9,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@vercel/blob": "2.8.2",
     "next": "16.4.3",
     "react": "19.3.1",
     "react-dom": "19.3.1"

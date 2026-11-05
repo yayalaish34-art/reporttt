@@ -1,13 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
-import { predictionJobNumber } from '../../../actions';
-import { FlowSteps } from '../../../flow-steps';
-import { ProjectForm } from '../../../project-form';
-import { ApiError, api, errorText, fileUrl } from '@/lib/prediction/api';
-import { uploadPlan } from '@/lib/prediction/upload';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { FlowSteps } from '../flow-steps';
+import { ProjectForm } from '../project-form';
+import { ApiError, api, errorText, fileUrl } from '@/lib/api';
+import { uploadPlan } from '@/lib/upload';
 
 // Only these are read automatically; a single-line diagram is kept for the engineer.
 const READ_TYPES = ['ELECTRICAL', 'ARCHITECTURAL'];
@@ -58,9 +57,17 @@ const DOCUMENT_GROUPS = [
 
 type Page = { document_id: string; page: number; key: string; file_name: string };
 
-export default function AutoPage() {
-  const { id } = useParams<{ id: string }>();
+export default function ProjectPage() {
+  return (
+    <Suspense fallback={<p className="muted">טוען…</p>}>
+      <AutoPage />
+    </Suspense>
+  );
+}
+
+function AutoPage() {
   const search = useSearchParams();
+  const id = search.get('id') ?? '';
   const base = `/projects/${id}`;
   const [state, setState] = useState<any>(null);
   const [project, setProject] = useState<any>(null);
@@ -107,6 +114,15 @@ export default function AutoPage() {
 
   return (
     <>
+      <div className="page-head" style={{ marginBottom: 8 }}>
+        <div>
+          <h1>{project.project_name}</h1>
+          <p className="subtitle">
+            {project.client_name}
+            {project.project_number ? ` · Job ${project.project_number}` : ''}
+          </p>
+        </div>
+      </div>
       <FlowSteps current={step} reachable={stepTwoDone ? 3 : 2} onPick={setStep} />
       {error && <div className="notice error">{error}</div>}
 
@@ -397,7 +413,6 @@ function Prediction({
       setBusy('בונה את המודל…');
       await api(`${base}/auto/build`, { method: 'POST' });
       setBusy('מחשב ומפיק את הדוח… (עד דקה)');
-      await ensureJobNumber();
       setResult(await api(`${base}/auto/finish`, { method: 'POST' }));
     } catch (failure) {
       const missing = failure instanceof ApiError && failure.missing.length ? `: ${failure.missing.join(' · ')}` : '';
@@ -408,17 +423,6 @@ function Prediction({
     }
   }
 
-  async function ensureJobNumber() {
-    try {
-      const [project, user] = await Promise.all([api(base), api('/auth/me')]);
-      const number = await predictionJobNumber(id, project.client_name, user.full_name || user.email, project.project_number);
-      if (String(number) !== project.project_number) {
-        await api(base, { method: 'PATCH', json: { project_number: String(number), reason: 'Job Number מבקרת המספרים' } });
-      }
-    } catch (failure) {
-      console.error('רישום Job Number נכשל', failure);
-    }
-  }
 
   const latest = reports[0];
   const included = state.detected.filter((d: any) => d.included);
@@ -488,7 +492,7 @@ function Prediction({
               הדוח מסומן כטיוטה עד שיושלמו: {summarise(result.blockers)}.{' '}
               {result.blockers.some((b: any) => b.code === 'REGULATION_RULE') && (
                 <>
-                  את הסף (למשל 4 mG) מפעילים ב<Link href="/prediction/regulation">כללי רגולציה</Link>.
+                  את הסף (למשל 4 mG) מפעילים ב<Link href="/regulation/">כללי רגולציה</Link>.
                 </>
               )}
             </p>

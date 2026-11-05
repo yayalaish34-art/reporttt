@@ -29,9 +29,20 @@ class Settings(BaseSettings):
     # A connected Blob store sets these. Either one selects Blob storage.
     blob_store_id: str | None = None
     blob_read_write_token: str | None = None
-    # Automatic reading of plan pages. Without a key the manual flow still works.
+    # Automatic reading of plan pages.
     openai_api_key: str | None = None
     openai_model: str = "gpt-5"
+    # Railway sets this on every deployment.
+    railway_environment: str | None = None
+    # The built screens, served from this same address. Absent in development and in tests.
+    web_dist: str | None = None
+    # The CRM's database, read for the customer search on the project form.
+    crm_database_url: str | None = None
+    # The company-wide Job Number register lives in the reports system.
+    reports_url: str | None = None
+    job_numbers_token: str | None = None
+    # This system's own address, for the link the Job Number register shows.
+    public_url: str | None = None
 
     @property
     def sqlalchemy_url(self) -> str:
@@ -50,15 +61,17 @@ class Settings(BaseSettings):
         return self.elf_max_upload_mb * 1024 * 1024
 
     def assert_safe_for_deployment(self) -> None:
-        """A function's disk is temporary and its defaults are public, so refuse to start on them."""
-        if not self.vercel_env:
+        """Defaults are public and a container's disk is temporary, so refuse to start on them."""
+        if not (self.vercel_env or self.railway_environment):
             return
         if self.elf_jwt_secret == INSECURE_LOCAL_SECRET:
             raise RuntimeError("ELF_JWT_SECRET must be set in a deployed environment")
         if self.sqlalchemy_url.startswith("sqlite"):
             raise RuntimeError("DATABASE_URL must point to PostgreSQL in a deployed environment")
-        if not self.uses_blob_storage:
+        if self.vercel_env and not self.uses_blob_storage:
             raise RuntimeError("A Blob store must be connected in a deployed environment")
+        if self.railway_environment and not self.uses_blob_storage and not self.elf_storage_dir.startswith("/data"):
+            raise RuntimeError("ELF_STORAGE_DIR must be on the /data volume in a deployed environment")
 
 
 settings = Settings()

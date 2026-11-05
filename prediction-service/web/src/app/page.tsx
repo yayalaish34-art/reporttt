@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { api, errorText } from '@/lib/prediction/api';
-import { BUILDING_LABELS, label } from '@/lib/prediction/labels';
+import { api, errorText } from '@/lib/api';
+import { BUILDING_LABELS, label } from '@/lib/labels';
 
 export default function PredictionProjects() {
   const [projects, setProjects] = useState<any[] | null>(null);
@@ -25,7 +25,7 @@ export default function PredictionProjects() {
           </p>
         </div>
         <div className="actions">
-          <Link className="btn btn-primary" href="/prediction/new" prefetch={false}>
+          <Link className="btn btn-primary" href="/new/" prefetch={false}>
             חיזוי חדש
           </Link>
         </div>
@@ -49,7 +49,7 @@ export default function PredictionProjects() {
                 {projects.map((project) => (
                   <tr key={project.id}>
                     <td>
-                      <Link href={`/prediction/projects/${project.id}/auto`} prefetch={false}>
+                      <Link href={`/project/?id=${project.id}`} prefetch={false}>
                         {project.project_name}
                       </Link>
                     </td>

@@ -36,7 +36,7 @@ export default function NewPrediction() {
         </ol>
       </div>
 
-      <ProjectForm onSaved={(project) => router.push(`/prediction/projects/${project.id}/auto?step=2`)} />
+      <ProjectForm onSaved={(project) => router.push(`/project/?id=${project.id}&step=2`)} />
     </>
   );
 }
