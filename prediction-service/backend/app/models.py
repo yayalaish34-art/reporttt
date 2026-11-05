@@ -120,6 +120,8 @@ class Room(Base):
     floor_id: Mapped[str] = mapped_column(ForeignKey("floors.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(200))
     polygon_m: Mapped[list] = mapped_column(JSON)
+    # Areas inside the outline that belong to other rooms (the rest of a floor around its rooms).
+    holes_m: Mapped[list | None] = mapped_column(JSON, nullable=True)
     area_m2: Mapped[float] = mapped_column(Float, default=0.0)
     usage_type: Mapped[str] = mapped_column(String(100), default="")
     suggested_occupancy: Mapped[str] = mapped_column(String(30), default="UNKNOWN")

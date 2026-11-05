@@ -154,6 +154,8 @@ def _state(db: Session, project: Project) -> dict:
                 "sources": len(a.result.get("sources") or []),
                 "notes": a.result.get("notes"),
                 "error": a.result.get("error"),
+                # Read before rooms and levels were read too: read again on the next run.
+                "stale": a.result.get("version", 1) < plan_ai.ANALYSIS_VERSION,
             }
             for a in analyses
         ],

@@ -9,6 +9,7 @@ import threading
 from pathlib import Path
 
 import pypdfium2 as pdfium
+from bidi.algorithm import get_display
 from PIL import Image, ImageDraw, ImageFont
 from pypdfium2 import PdfiumError
 
@@ -135,6 +136,9 @@ def draw_heatmap(
         xs += [p[0] for p in outline]
         ys += [p[1] for p in outline]
         draw.line(outline + [outline[0]], fill=(30, 30, 30, 255), width=3)
+        for hole in room.get("holes_m") or []:
+            ring = [world_to_px(x, y, floor_scale, origin) for x, y in hole]
+            draw.line(ring + [ring[0]], fill=(30, 30, 30, 255), width=2)
 
     for source in sources:
         path = [world_to_px(x, y, floor_scale, origin) for x, y in source["points"]]
@@ -145,7 +149,7 @@ def draw_heatmap(
             draw.line(path, fill=(160, 0, 160, 255), width=4)
         xs += [p[0] for p in path]
         ys += [p[1] for p in path]
-        draw.text(path[0], source["tag"], fill=(160, 0, 160, 255), font=label, anchor="lb")
+        draw.text(path[0], get_display(source["tag"]), fill=(160, 0, 160, 255), font=label, anchor="lb")
 
     merged = Image.alpha_composite(base, overlay).convert("RGB")
     if xs:

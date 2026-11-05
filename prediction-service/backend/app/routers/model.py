@@ -114,7 +114,9 @@ def _rebase_floor_geometry(db: Session, floor: Floor, new_scale: float, new_orig
 
     for room in db.scalars(select(Room).where(Room.floor_id == floor.id)):
         room.polygon_m = [rebase(point) for point in room.polygon_m]
-        room.area_m2 = Polygon(room.polygon_m).area
+        if room.holes_m:
+            room.holes_m = [[rebase(point) for point in hole] for hole in room.holes_m]
+        room.area_m2 = Polygon(room.polygon_m, room.holes_m or None).area
     for source in db.scalars(select(ElectricalSource).where(ElectricalSource.floor_id == floor.id)):
         source.geometry = {**source.geometry, "points": [rebase(point) for point in source.geometry["points"]]}
 

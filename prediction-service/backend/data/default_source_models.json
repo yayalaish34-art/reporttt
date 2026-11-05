@@ -10,7 +10,28 @@
       "box_height_m": 2.0,
       "min_box_m": 1.5,
       "reference_current_a": 910,
-      "reference_curve": [[0.3, 1000], [1.0, 200], [2.0, 50], [4.0, 10], [8.0, 2]],
+      "reference_curve": [
+        [
+          0.3,
+          1000
+        ],
+        [
+          1.0,
+          200
+        ],
+        [
+          2.0,
+          50
+        ],
+        [
+          4.0,
+          10
+        ],
+        [
+          8.0,
+          2
+        ]
+      ],
       "reference_source": "ספריית ברירות המחדל של המערכת: שנאי חלוקה 630kVA בזרם נקוב, דעיכה בקירוב 1/r^2.2. הנחה הנדסית, לאימות מול נתוני יצרן או מדידה."
     },
     "METER_BOARD": {
@@ -22,7 +43,24 @@
       "box_height_m": 2.0,
       "min_box_m": 0.6,
       "reference_current_a": 100,
-      "reference_curve": [[0.3, 150], [1.0, 25], [2.0, 6], [4.0, 1.5]],
+      "reference_curve": [
+        [
+          0.3,
+          150
+        ],
+        [
+          1.0,
+          25
+        ],
+        [
+          2.0,
+          6
+        ],
+        [
+          4.0,
+          1.5
+        ]
+      ],
       "reference_source": "ספריית ברירות המחדל של המערכת: לוח מתח נמוך, 100A. הנחה הנדסית, לאימות מול נתוני יצרן או מדידה."
     },
     "DISTRIBUTION_PILLAR": {
@@ -34,7 +72,24 @@
       "box_height_m": 1.6,
       "min_box_m": 0.6,
       "reference_current_a": 100,
-      "reference_curve": [[0.3, 150], [1.0, 25], [2.0, 6], [4.0, 1.5]],
+      "reference_curve": [
+        [
+          0.3,
+          150
+        ],
+        [
+          1.0,
+          25
+        ],
+        [
+          2.0,
+          6
+        ],
+        [
+          4.0,
+          1.5
+        ]
+      ],
       "reference_source": "ספריית ברירות המחדל של המערכת: לוח מתח נמוך, 100A. הנחה הנדסית, לאימות מול נתוני יצרן או מדידה."
     },
     "MAIN_BOARD": {
@@ -46,7 +101,24 @@
       "box_height_m": 2.0,
       "min_box_m": 0.6,
       "reference_current_a": 100,
-      "reference_curve": [[0.3, 150], [1.0, 25], [2.0, 6], [4.0, 1.5]],
+      "reference_curve": [
+        [
+          0.3,
+          150
+        ],
+        [
+          1.0,
+          25
+        ],
+        [
+          2.0,
+          6
+        ],
+        [
+          4.0,
+          1.5
+        ]
+      ],
       "reference_source": "ספריית ברירות המחדל של המערכת: לוח מתח נמוך, 100A. הנחה הנדסית, לאימות מול נתוני יצרן או מדידה."
     },
     "EV_CHARGING": {
@@ -58,7 +130,24 @@
       "box_height_m": 2.0,
       "min_box_m": 0.6,
       "reference_current_a": 100,
-      "reference_curve": [[0.3, 150], [1.0, 25], [2.0, 6], [4.0, 1.5]],
+      "reference_curve": [
+        [
+          0.3,
+          150
+        ],
+        [
+          1.0,
+          25
+        ],
+        [
+          2.0,
+          6
+        ],
+        [
+          4.0,
+          1.5
+        ]
+      ],
       "reference_source": "ספריית ברירות המחדל של המערכת: לוח מתח נמוך, 100A. הנחה הנדסית, לאימות מול נתוני יצרן או מדידה."
     },
     "GENERATOR": {
@@ -70,7 +159,24 @@
       "box_height_m": 2.0,
       "min_box_m": 1.0,
       "reference_current_a": 100,
-      "reference_curve": [[0.3, 150], [1.0, 25], [2.0, 6], [4.0, 1.5]],
+      "reference_curve": [
+        [
+          0.3,
+          150
+        ],
+        [
+          1.0,
+          25
+        ],
+        [
+          2.0,
+          6
+        ],
+        [
+          4.0,
+          1.5
+        ]
+      ],
       "reference_source": "ספריית ברירות המחדל של המערכת: גוף מתח נמוך, 100A. הנחה הנדסית, לאימות מול נתוני יצרן או מדידה."
     },
     "PV_INVERTER": {
@@ -82,7 +188,24 @@
       "box_height_m": 1.0,
       "min_box_m": 0.5,
       "reference_current_a": 100,
-      "reference_curve": [[0.3, 150], [1.0, 25], [2.0, 6], [4.0, 1.5]],
+      "reference_curve": [
+        [
+          0.3,
+          150
+        ],
+        [
+          1.0,
+          25
+        ],
+        [
+          2.0,
+          6
+        ],
+        [
+          4.0,
+          1.5
+        ]
+      ],
       "reference_source": "ספריית ברירות המחדל של המערכת: גוף מתח נמוך, 100A. הנחה הנדסית, לאימות מול נתוני יצרן או מדידה."
     },
     "FEEDER": {
@@ -108,6 +231,27 @@
       "mounting": "vertical",
       "arrangement": "TREFOIL",
       "spacing_m": 0.05
+    }
+  },
+  "defaults": {
+    "_note": "Used only where a plan does not show the value. Each use is listed in the report as an assumption.",
+    "typical_load_pct": 60,
+    "floor_height_m": 3.2,
+    "basement_height_m": 3.5,
+    "apartment_current_a": 25,
+    "transformer_kva": 630,
+    "scale_denominator": 100,
+    "currents_a": {
+      "FEEDER": 400,
+      "BUSBAR": 400,
+      "RISER": 400,
+      "METER_BOARD": 300,
+      "DISTRIBUTION_PILLAR": 400,
+      "MAIN_BOARD": 100,
+      "EV_CHARGING": 100,
+      "GENERATOR": 100,
+      "PV_INVERTER": 100,
+      "TRANSFORMER": 910
     }
   }
 }

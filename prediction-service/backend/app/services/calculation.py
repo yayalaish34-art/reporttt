@@ -145,7 +145,7 @@ def run_calculation(
         if floor is None or floor.elevation_m is None:
             continue
         for height in heights:
-            room_plan.append((room, floor, height, room_grid(room.polygon_m, grid_step_m, [floor.elevation_m + height])))
+            room_plan.append((room, floor, height, room_grid(room.polygon_m, grid_step_m, [floor.elevation_m + height], room.holes_m)))
     if not room_plan:
         raise CalculationError("אין חדר עם גובה קומה ידוע לחישוב.")
 
@@ -198,6 +198,7 @@ def run_calculation(
                 "name": r.name,
                 "floor_id": r.floor_id,
                 "polygon_m": r.polygon_m,
+                "holes_m": r.holes_m,
                 "usage_type": r.usage_type,
                 "occupancy_classification": r.occupancy_classification,
                 "occupancy_confirmed": r.occupancy_confirmed,

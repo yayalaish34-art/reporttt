@@ -51,6 +51,24 @@ SOURCE_KINDS = (
 )
 PATH_KINDS = ("FEEDER", "BUSBAR")
 FLOOR_USES = ("PARKING", "RESIDENTIAL", "OFFICE", "COMMERCIAL", "PUBLIC", "TECHNICAL", "MIXED")
+# Every space on a floor. Inside a flat everything is prolonged occupancy; the shared and
+# service spaces are not.
+ZONE_KINDS = (
+    "APARTMENT_ROOM",
+    "OFFICE",
+    "COMMERCIAL",
+    "PUBLIC_ROOM",
+    "CORRIDOR",
+    "LOBBY",
+    "STAIRS",
+    "ELEVATOR",
+    "SHAFT",
+    "STORAGE",
+    "TECHNICAL",
+    "PARKING",
+)
+# Bumped whenever a reading gains something the model is built from; older readings are read again.
+ANALYSIS_VERSION = 2
 CONFIDENCES = ("HIGH", "MEDIUM", "LOW")
 _CONFIDENCE_RANK = {"HIGH": 2, "MEDIUM": 1, "LOW": 0}
 
@@ -59,7 +77,7 @@ You get one whole sheet as a small image, its file name, and any text extracted 
 Return JSON only, in exactly this shape:
 {
   "sheet_kind": "ELECTRICAL" | "ARCHITECTURAL" | "SINGLE_LINE" | "OTHER",
-  "floors": [{"name": "<Hebrew floor name as written>", "level": <int>}],
+  "floors": [{"name": "<Hebrew floor name as written>", "level": <int>, "elevation_m": <number> | null}],
   "floor_use": "PARKING" | "RESIDENTIAL" | "OFFICE" | "COMMERCIAL" | "PUBLIC" | "TECHNICAL" | "MIXED" | null,
   "scale_text": "1:100" | null,
   "building_box": [x0, y0, x1, y1] | null,
@@ -69,6 +87,7 @@ Coordinates are integers from 0 to 1000 across the image width (x, left to right
 Floors: level 0 is the ground floor (קומת קרקע), 1 is קומה 1, -1 is מרתף 1- (also written מרתף מ1), -2 is מרתף 2-.
 A typical-floor sheet such as "קומות 3-4" lists every floor it covers. A technical roof (גג טכני) is the level above the top floor.
 The file name is usually the most reliable floor label. Use it.
+elevation_m is the floor's level in metres as written on the sheet (מפלס, e.g. "+3.55" or "-4.00", relative to ±0.00), or null if it is not written.
 An electrical sheet (תוכנית חשמל, מתקן חשמל) shows electrical symbols and wiring over the floor plan; an architectural sheet (גרמושקה, תוכנית אדריכלית) shows only the building.
 scale_text is the drawing scale written in the title block (קנ"מ), or null if you cannot read it.
 building_box frames all building drawings on the sheet (one or more buildings), without the title block, legend, notes or details."""
@@ -82,10 +101,14 @@ Return JSON only, in exactly this shape:
     {"kind": "<kind>", "label": "<text written next to it>", "box": [x0, y0, x1, y1] | null,
      "path": [[x, y], ...] | null, "point": [x, y] | null, "rating_text": "<e.g. 630KVA, 3x400A>" | null,
      "kva": <number> | null, "current_a": <number> | null, "confidence": "HIGH" | "MEDIUM" | "LOW"}
+  ],
+  "zones": [
+    {"kind": "<zone kind>", "label": "<the room's name as written>", "unit": "<the flat it belongs to, as written (e.g. A, 3, דירה 5)>" | null,
+     "point": [x, y]}
   ]
 }
 Coordinates are integers from 0 to 1000 across this tile's width (x, left to right) and height (y, top to bottom).
-Kinds:
+Source kinds:
 - TRANSFORMER: a transformer or transformer room (שנאי, טרפו, חדר שנאים, חדר טרפו). box = the transformer or the room.
 - METER_BOARD: meter boards (לוח מונים, ריכוז מונים, גומחת מונים). box.
 - DISTRIBUTION_PILLAR: a distribution pillar (פילר, פילר חלוקה). box.
@@ -99,7 +122,15 @@ Leave out lights, sockets, switches, small apartment boards (לוח דירתי),
 Give kva and current_a only when they are written in the tile; never estimate them.
 If something is probably a source but you are not sure, include it with confidence LOW.
 scale_text: the drawing scale (קנ"מ) if this tile shows the title block, otherwise null.
-Most tiles contain no sources. Then return an empty list."""
+Most tiles contain no sources. Then return an empty list.
+
+Zones: every room and space of the building drawn in this tile, one point each, well inside the room (away from its walls; the middle of its floor).
+Zone kinds:
+- APARTMENT_ROOM: any space inside a flat: bedroom (חדר שינה, חדר הורים), living room (חדר דיור, סלון), kitchen (מטבח), dining, bathroom and toilet (אמבטיה, מקלחת, שירותים), safe room (ממ"ד), balcony (מרפסת), the flat's own hall. Give unit, the flat's letter or number as written (דירה 3, A), so rooms of one flat share it.
+- OFFICE, COMMERCIAL (shop, חנות), PUBLIC_ROOM (kindergarten, club, מועדון, גן ילדים).
+- CORRIDOR (מסדרון, מעבר), LOBBY (לובי, מבואה, כניסה), STAIRS (חדר מדרגות), ELEVATOR (מעלית, פיר מעלית), SHAFT (פיר, פיר חשמל/אינסטלציה), STORAGE (מחסן), TECHNICAL (חדר חשמל, חדר שנאים, חדר משאבות, חדר אשפה, חדר מכונות), PARKING (חניה, חניון, מסלול נסיעה).
+Mark every space you can see, also small ones (a toilet, a shaft, a balcony). Leave out the space outside the building.
+One point per room. A room cut by the tile's edge: mark it only if its middle is in this tile."""
 
 
 class PlanAiError(RuntimeError):
@@ -162,7 +193,7 @@ def _call_model(system_prompt: str, image: Image.Image, user_text: str, effort: 
             },
         ],
         "response_format": {"type": "json_object"},
-        "max_completion_tokens": 12000,
+        "max_completion_tokens": 24000,
     }
     if re.match(r"^(gpt-5|o\d)", settings.openai_model):
         body["reasoning_effort"] = effort
@@ -239,7 +270,13 @@ def clean_overview(raw: dict) -> dict:
         except (TypeError, ValueError):
             continue
         if -10 <= level <= 120:
-            floors.append({"name": str(floor.get("name") or "").strip()[:80], "level": level})
+            try:
+                elevation = float(floor.get("elevation_m"))
+            except (TypeError, ValueError):
+                elevation = None
+            if elevation is not None and not -40 <= elevation <= 400:
+                elevation = None
+            floors.append({"name": str(floor.get("name") or "").strip()[:80], "level": level, "elevation_m": elevation})
     return {
         "sheet_kind": raw.get("sheet_kind") if raw.get("sheet_kind") in SHEET_KINDS else "OTHER",
         "floors": floors,
@@ -248,6 +285,23 @@ def clean_overview(raw: dict) -> dict:
         "building_box": _box(raw.get("building_box")),
         "notes": str(raw.get("notes") or "").strip()[:300],
     }
+
+
+def clean_zones(raw: dict) -> list[dict]:
+    """One point per space, coordinates 0–1000. The room's outline comes from the walls."""
+    zones = []
+    for item in raw.get("zones") or []:
+        if not isinstance(item, dict) or item.get("kind") not in ZONE_KINDS:
+            continue
+        point = _point(item.get("point"))
+        if point is None:
+            box = _box(item.get("box"))
+            if box is None:
+                continue
+            point = [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2]
+        unit = str(item.get("unit") or "").strip()[:30] or None
+        zones.append({"kind": item["kind"], "label": str(item.get("label") or "").strip()[:60], "unit": unit, "point": point})
+    return zones
 
 
 def clean_sources(raw: dict) -> list[dict]:
@@ -346,6 +400,17 @@ def sources_in_core(sources: list[dict], tile: dict) -> list[dict]:
     return kept
 
 
+def zones_in_core(zones: list[dict], tile: dict) -> list[dict]:
+    """A tile's room points in page pixels, kept only in its core so no room is marked twice."""
+    core = tile["core"]
+    kept = []
+    for zone in zones:
+        x, y = _to_page(zone["point"], tile["crop"])
+        if core[0] <= x < core[2] and core[1] <= y < core[3]:
+            kept.append({**zone, "point": [round(x, 1), round(y, 1)]})
+    return kept
+
+
 def _merge_boxes(sources: list[dict]) -> list[dict]:
     """One piece of equipment seen whole by two tiles still has its centre in one core only,
     but a large room can be reported as two halves. Overlapping boxes of a kind become one."""
@@ -403,9 +468,11 @@ def analyze_page(document: Document, page: int) -> dict:
         overview = clean_overview(overview_future.result())
 
     sources: list[dict] = []
+    zones: list[dict] = []
     tile_scales = []
     for tile, raw in zip(tiles, tile_results):
         sources += sources_in_core(clean_sources(raw), tile)
+        zones += zones_in_core(clean_zones(raw), tile)
         tile_scales.append(str(raw.get("scale_text") or ""))
 
     building_box = overview["building_box"]
@@ -415,6 +482,8 @@ def analyze_page(document: Document, page: int) -> dict:
         if building_box
         else None,
         "sources": _merge_boxes(sources),
+        "zones": zones,
+        "version": ANALYSIS_VERSION,
         "scale_denominator": scale_denominator(*tile_scales, overview["scale_text"], facts["text"]),
         "page_size_pt": [facts["width_pt"], facts["height_pt"]] if facts["width_pt"] else None,
         "render_scale": facts["render_scale"],

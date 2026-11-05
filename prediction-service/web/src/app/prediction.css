@@ -322,3 +322,55 @@
   font-size: 13px;
   margin: 8px 0 0;
 }
+
+/* The 3D view: the scene beside its controls, stacked on a phone. */
+.elf .building-3d {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 12px;
+}
+
+.elf .building-3d-stage {
+  height: 560px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: linear-gradient(#f7f9fb, #e9eef3);
+  overflow: hidden;
+}
+
+.elf .building-3d-side {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.elf .building-3d-floors {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.elf .building-3d-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  align-items: center;
+}
+
+.elf .building-3d-legend span[style] {
+  padding: 1px 6px;
+  font-size: 11px;
+  color: #111;
+}
+
+@media (max-width: 720px) {
+  .elf .building-3d {
+    grid-template-columns: 1fr;
+  }
+
+  .elf .building-3d-stage {
+    height: 380px;
+  }
+}

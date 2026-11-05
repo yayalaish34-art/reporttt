@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { FlowSteps } from '../flow-steps';
+import { Building3D } from '../building-3d';
 import { ProjectForm } from '../project-form';
 import { ApiError, api, errorText, fileUrl } from '@/lib/api';
 import { uploadPlan } from '@/lib/upload';
@@ -12,17 +13,6 @@ import { uploadPlan } from '@/lib/upload';
 const READ_TYPES = ['ELECTRICAL', 'ARCHITECTURAL'];
 // Pages read at once. Each one is itself several model calls in parallel.
 const PARALLEL_PAGES = 3;
-
-/** The questions asked before any plan is read. Each applies to every source of its kind. */
-const KIND_QUESTIONS: { kind: string; field: 'kva' | 'max_current_a'; label: string; hint: string }[] = [
-  { kind: 'TRANSFORMER', field: 'kva', label: 'הספק כל שנאי (kVA)', hint: 'למשל 630. ריק אם אין שנאי במבנה' },
-  { kind: 'FEEDER', field: 'max_current_a', label: 'זרם מרבי בקו הזנה ראשי (A)', hint: 'מהשנאי או מחברת החשמל ללוחות' },
-  { kind: 'RISER', field: 'max_current_a', label: 'זרם מרבי בפיר ההזנה לקומות (A)', hint: 'סך הכבלים העולים בפיר אחד' },
-  { kind: 'METER_BOARD', field: 'max_current_a', label: 'זרם מרבי בלוח מונים (A)', hint: 'לכל ריכוז מונים' },
-  { kind: 'DISTRIBUTION_PILLAR', field: 'max_current_a', label: 'זרם מרבי בפילר חלוקה (A)', hint: 'ריק אם אין' },
-  { kind: 'MAIN_BOARD', field: 'max_current_a', label: 'זרם מרבי בלוח ראשי / ציבורי (A)', hint: 'ריק אם אין' },
-  { kind: 'EV_CHARGING', field: 'max_current_a', label: 'זרם מרבי בלוח טעינת רכבים (A)', hint: 'ריק אם אין' },
-];
 
 const DOCUMENT_GROUPS = [
   {
@@ -95,7 +85,7 @@ function AutoPage() {
   useEffect(() => {
     if (step !== null || !state) return;
     const hasElectrical = state.documents.some((d: any) => d.document_type === 'ELECTRICAL');
-    setStep(hasElectrical && generalAnswered(state.settings) ? 3 : 2);
+    setStep(hasElectrical ? 3 : 2);
   }, [state, step]);
 
   async function save(update: Record<string, unknown>) {
@@ -110,7 +100,7 @@ function AutoPage() {
   if (!state || !project || step === null) return error ? <div className="notice error">{error}</div> : <p className="muted">טוען…</p>;
 
   const hasElectrical = state.documents.some((d: any) => d.document_type === 'ELECTRICAL');
-  const stepTwoDone = hasElectrical && generalAnswered(state.settings);
+  const stepTwoDone = hasElectrical;
 
   return (
     <>
@@ -142,7 +132,7 @@ function AutoPage() {
       )}
 
       {step === 2 && (
-        <DocumentsAndQuestions
+        <Documents
           id={id}
           base={base}
           state={state}
@@ -161,13 +151,9 @@ function AutoPage() {
   );
 }
 
-function generalAnswered(settings: any): boolean {
-  return settings.floor_height_m != null && settings.basement_height_m != null && settings.typical_load_pct != null;
-}
-
 // ── Step 2 ───────────────────────────────────────────────────────────────
 
-function DocumentsAndQuestions({
+function Documents({
   id,
   state,
   meta,
@@ -189,14 +175,16 @@ function DocumentsAndQuestions({
   hasElectrical: boolean;
   next: () => void;
 }) {
-  const settings = state.settings;
   const hasArchitectural = state.documents.some((d: any) => d.document_type === 'ARCHITECTURAL');
 
   return (
     <>
       <section className="card">
         <h2>2. מסמכים</h2>
-        <p className="muted small">כל סוג מסמך מעלים בתיבה שלו. אפשר לבחור כמה קבצים יחד.</p>
+        <p className="muted small">
+          כל סוג מסמך מעלים בתיבה שלו. אפשר לבחור כמה קבצים יחד. אין שאלות: המפלסים, ההספקים והזרמים נקראים מהתוכניות, ומה שלא כתוב
+          בהן נלקח מערכי ברירת מחדל שמפורטים בדוח.
+        </p>
         <div className="doc-groups">
           {DOCUMENT_GROUPS.map((group) => (
             <DocumentGroup
@@ -217,53 +205,13 @@ function DocumentsAndQuestions({
         )}
       </section>
 
-      <section className="card">
-        <h2>שאלות</h2>
-        <p className="muted small">
-          התשובות חלות על כל המקורות מאותו סוג שיזוהו בתוכניות. מקור שהזרם או ההספק שלו כתובים בתוכנית יקבל את הכתוב בה.
-        </p>
-        <h3 style={{ fontSize: 15, margin: '8px 0 4px' }}>המבנה</h3>
-        <div className="row" style={{ flexWrap: 'wrap', alignItems: 'flex-start' }}>
-          <NumberField
-            label="גובה קומה טיפוסית (מ׳)"
-            hint="מרצפה לרצפה, למשל 3.2"
-            value={settings.floor_height_m}
-            onSave={(v) => save({ floor_height_m: v })}
-          />
-          <NumberField
-            label="גובה קומת מרתף (מ׳)"
-            hint="מרצפה לרצפה, למשל 3.5"
-            value={settings.basement_height_m}
-            onSave={(v) => save({ basement_height_m: v })}
-          />
-          <NumberField
-            label="זרם אופייני: % מהזרם המרבי"
-            hint="החישוב נעשה בזרם הזה, למשל 60"
-            value={settings.typical_load_pct}
-            onSave={(v) => save({ typical_load_pct: v })}
-          />
-        </div>
-        <h3 style={{ fontSize: 15, margin: '12px 0 4px' }}>מקורות החשמל</h3>
-        <div className="row" style={{ flexWrap: 'wrap', alignItems: 'flex-start' }}>
-          {KIND_QUESTIONS.map((question) => (
-            <NumberField
-              key={question.kind}
-              label={question.label}
-              hint={question.hint}
-              value={settings.kinds?.[question.kind]?.[question.field] ?? null}
-              onSave={(v) => save({ kinds: { [question.kind]: { [question.field]: v } } })}
-            />
-          ))}
-        </div>
-      </section>
-
       <div className="row">
         <button className="btn-primary" disabled={!ready} onClick={next}>
           המשך לחיזוי אוטומטי
         </button>
         {!ready && (
           <span className="muted small">
-            {hasElectrical ? 'חסרות תשובות על המבנה (גבהים ואחוז זרם).' : 'יש להעלות לפחות תוכנית חשמל אחת.'}
+            יש להעלות לפחות תוכנית חשמל אחת.
           </span>
         )}
       </div>
@@ -377,7 +325,7 @@ function Prediction({
         file_name: d.page_count > 1 ? `${d.file_name} (עמוד ${page + 1})` : d.file_name,
       })),
     );
-  const analysed = new Set(state.analyses.map((a: any) => a.key));
+  const analysed = new Set(state.analyses.filter((a: any) => !a.stale).map((a: any) => a.key));
   const unread = pages.filter((p) => !analysed.has(p.key));
 
   /** Reads what is unread, then builds, approves, calculates and issues. Stops only to ask. */
@@ -497,6 +445,13 @@ function Prediction({
               )}
             </p>
           )}
+        </section>
+      )}
+
+      {latest && (
+        <section className="card">
+          <h2>תצוגה תלת-ממדית</h2>
+          <Building3D base={base} runId={latest.run_id} key={latest.id} />
         </section>
       )}
 

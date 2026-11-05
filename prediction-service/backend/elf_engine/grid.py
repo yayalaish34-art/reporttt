@@ -5,7 +5,7 @@ from shapely import contains_xy
 from shapely.geometry import Polygon
 
 
-def room_grid(polygon, step_m: float, z_values) -> np.ndarray:
+def room_grid(polygon, step_m: float, z_values, holes=None) -> np.ndarray:
     """(N, 3) points at cell centres of a step_m grid, at every z.
 
     A room narrower than the step would otherwise get no point and silently vanish
@@ -15,7 +15,7 @@ def room_grid(polygon, step_m: float, z_values) -> np.ndarray:
         raise ValueError("Grid step must be positive")
     if not list(z_values):
         raise ValueError("At least one calculation height is required")
-    shape = Polygon(polygon)
+    shape = Polygon(polygon, holes or None)
     if not shape.is_valid or shape.area == 0:
         raise ValueError("Room polygon is not valid")
 

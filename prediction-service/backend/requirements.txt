@@ -11,6 +11,7 @@ pypdfium2==5.14.0
 python-bidi==0.6.12
 python-multipart==0.0.33
 reportlab==5.1.0
+scipy==1.18.1
 shapely==2.2.0
 SQLAlchemy==2.1.6
 uvicorn[standard]==0.54.0

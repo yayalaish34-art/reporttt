@@ -32,6 +32,7 @@ from ..models import (
     User,
 )
 from .calculation import floor_points
+from .hebrew import ARRANGEMENTS, BUILDING_TYPES, COMBINATIONS, CURRENT_BASES, DOCUMENT_TYPES, MODELS, SOURCE_TYPES, STATUSES, USES, he
 from .source_model import is_line
 from .visualization import BANDS, draw_heatmap, render_page_png
 
@@ -55,7 +56,7 @@ CENTER = ParagraphStyle("center", parent=BODY, alignment=TA_CENTER, fontSize=12,
 STATUS_LABELS = {
     "PASS": "עומד בכלל",
     "FAIL": "חורג מהכלל",
-    "REGULATION_REVIEW_REQUIRED": "REGULATION_REVIEW_REQUIRED",
+    "REGULATION_REVIEW_REQUIRED": "נדרשת בדיקה רגולטורית",
 }
 OCCUPANCY_LABELS = {
     "CONTINUOUS_OCCUPANCY": "שהייה ממושכת",
@@ -73,7 +74,7 @@ INSTRUMENT_LABELS = {
 }
 
 METHOD_PARAGRAPHS = [
-    "השדה המגנטי חושב במנוע פיזיקלי דטרמיניסטי, ללא שימוש במודל שפה. כל מוליך מיוצג כמקטעים ישרים סופיים, והתרומה של כל מקטע מחושבת בצורה סגורה של חוק Biot–Savart.",
+    "השדה המגנטי חושב במנוע פיזיקלי דטרמיניסטי, ללא שימוש במודל שפה. כל מוליך מיוצג כמקטעים ישרים סופיים, והתרומה של כל מקטע מחושבת בצורה סגורה של חוק ביו-סבר.",
     "כל זרם מיוצג כפאזור, בהתחשב בזווית הפאזה של L1, L2 ו-L3. בתוך קבוצה בעלת קשר פאזה ידוע התרומות מחוברות וקטורית כפאזורים. התוצאה היא ערך ה-RMS השקול, שורש סכום ריבועי שלושת הרכיבים.",
     "בין קבוצות ללא קשר פאזה ידוע השילוב הוא שורש סכום הריבועים (RSS). התרחישים השמרניים משתמשים בחיבור אריתמטי, שהוא חסם עליון.",
     "שנאים ולוחות אינם מחושבים מעקרונות ראשונים. הם מיוצגים כתיבה בתוספת עקומת ייחוס שהוזנה, כשהשדה פרופורציוני לזרם והמרחק נמדד מפני התיבה.",
@@ -161,7 +162,7 @@ def rtl(text, style=BODY, width: float = CONTENT_WIDTH) -> Paragraph:
 
 
 def _num(value, digits: int = 2) -> str:
-    return f"{value:.{digits}f}" if value is not None else "MISSING_DATA"
+    return f"{value:.{digits}f}" if value is not None else "חסר נתון"
 
 
 def _table(headers: list[str], rows: list[list], widths: list[float], flags: list | None = None) -> Table:
@@ -221,7 +222,7 @@ def _heatmaps(db: Session, project: Project, run: CalculationRun) -> list:
                     floor.origin_px,
                     run.grid_step_m,
                     points,
-                    [{"polygon_m": r.polygon_m} for r in rooms if r.floor_id == floor.id],
+                    [{"polygon_m": r.polygon_m, "holes_m": r.holes_m} for r in rooms if r.floor_id == floor.id],
                     [
                         {"tag": s.tag, "points": s.geometry["points"], "is_box": not is_line(s.source_type)}
                         for s in sources
@@ -307,7 +308,7 @@ def build_report_pdf(
                 ("שם הפרויקט", project.project_name),
                 ("מספר פרויקט", project.project_number),
                 ("כתובת", project.address),
-                ("סוג מבנה", project.building_type),
+                ("סוג מבנה", he(BUILDING_TYPES, project.building_type)),
                 ("מהנדס חשמל", project.electrical_engineer),
                 ("אדריכל", project.architect),
                 ("תאריך", project.project_date.strftime("%d/%m/%Y") if project.project_date else ""),
@@ -322,7 +323,7 @@ def build_report_pdf(
     story += [rtl("4. מסמכים שהתקבלו", H1)]
     documents = snapshot["documents"]
     story.append(
-        _table(["קובץ", "סוג", "גרסה"], [[d["file_name"], d["document_type"], d["revision"]] for d in documents], [0.6, 0.25, 0.15])
+        _table(["קובץ", "סוג", "גרסה"], [[d["file_name"], he(DOCUMENT_TYPES, d["document_type"]), d["revision"]] for d in documents], [0.6, 0.25, 0.15])
         if documents
         else rtl("לא הועלו מסמכים.")
     )
@@ -345,16 +346,16 @@ def build_report_pdf(
     design_rows = []
     for source in snapshot["sources"]:
         record = records.get(source["id"], {})
-        model = source.get("model_type") or {"THREE_PHASE": "מעגל תלת-פאזי", "BUSBAR": "Busbar"}.get(source["kind"], source["kind"])
-        source_rows.append([source["id"], record.get("source_type"), model])
+        model = he(MODELS, source.get("model_type") or source["kind"])
+        source_rows.append([source["id"], he(SOURCE_TYPES, record.get("source_type")), model])
         spacing = source.get("spacing_m")
         design_rows.append(
             [
                 source["id"],
                 _num(record.get("current_a")),
-                record.get("current_basis") or "MISSING_DATA",
+                he(CURRENT_BASES, record.get("current_basis")) or "חסר נתון",
                 _num(record.get("load_factor")) if record.get("load_factor") is not None else "לא הוחל",
-                source.get("arrangement") or "—",
+                he(ARRANGEMENTS, source.get("arrangement")) or "—",
                 _num(spacing) if spacing is not None else "—",
             ]
         )
@@ -377,7 +378,7 @@ def build_report_pdf(
         story.append(
             _table(
                 ["סטטוס", "הנחה", "נימוק"],
-                [[a["status"], a["statement"], a["justification"]] for a in assumptions],
+                [[he(STATUSES, a["status"]), a["statement"], a["justification"]] for a in assumptions],
                 [0.28, 0.36, 0.36],
             )
         )
@@ -396,9 +397,9 @@ def build_report_pdf(
                 ("מקדם זרם בתרחיש", f"{scenario['current_factor']:g}"),
                 ("צעד רשת", f"{run.grid_step_m:g} מ׳"),
                 ("גובהי חישוב", ", ".join(f"{h:g}" for h in run.heights_m) + " מ׳"),
-                ("שיטת שילוב", run.combination_method),
+                ("שיטת שילוב", he(COMBINATIONS, run.combination_method)),
                 ("גרסת מנוע", run.engine_version),
-                ("Hash קלט", run.input_hash[:24]),
+                ("חתימת קלט", run.input_hash[:24]),
             ]
         ),
     ]
@@ -425,72 +426,90 @@ def build_report_pdf(
             )
         )
     else:
-        story.append(rtl("לא הוזן כלל רגולטורי מאומת ותקף. לכן לא נקבע סטטוס רגולטורי, וכל התוצאות מסומנות REGULATION_REVIEW_REQUIRED."))
+        story.append(rtl("לא הוזן כלל רגולטורי מאומת ותקף. לכן לא נקבע סטטוס רגולטורי, וכל התוצאות מסומנות כנדרשות בדיקה רגולטורית."))
 
-    # 12
+    # 12-13: a floor holds dozens of rooms, so per floor first, then the highest values.
+    per_room = _worst_per_room(results)
+    continuous = [r for r in per_room if r.occupancy_classification == "CONTINUOUS_OCCUPANCY"]
+    passing_through = [r for r in per_room if r.occupancy_classification != "CONTINUOUS_OCCUPANCY"]
+    floor_order = [f["name"] for f in floors]
     story += [
         rtl("11. סיווג אזורי שהייה", H1),
+        rtl("בתוך דירה, משרד או חנות השהייה ממושכת. מסדרון, לובי, חדר מדרגות, מעלית, פיר, מחסן, חדר טכני וחניה: שהייה לא ממושכת."),
+        Spacer(1, 4),
         _table(
-            ["קומה", "חדר", "שימוש", "סיווג", "שעות ביום"],
+            ["קומה", "חללי שהייה ממושכת", "חללי שהייה לא ממושכת"],
             [
                 [
-                    r.floor_name,
-                    r.room_name,
-                    r.usage_type,
-                    OCCUPANCY_LABELS.get(r.occupancy_classification, r.occupancy_classification),
-                    _num(r.occupancy_hours, 1) if r.occupancy_hours is not None else "לא הוזן",
+                    name,
+                    f"{sum(1 for r in continuous if r.floor_name == name)} חללים",
+                    f"{sum(1 for r in passing_through if r.floor_name == name)} חללים",
                 ]
-                for r in _worst_per_room(results)
+                for name in floor_order
             ],
-            [0.15, 0.25, 0.2, 0.25, 0.15],
+            [0.3, 0.35, 0.35],
         ),
     ]
 
-    # 13
+    def highest(rows, name):
+        on_floor = [r for r in rows if r.floor_name == name and r.max_mg is not None]
+        return max(on_floor, key=lambda r: r.max_mg) if on_floor else None
+
+    worst_continuous = max((r for r in continuous if r.max_mg is not None), key=lambda r: r.max_mg, default=None)
     story += [
         rtl("12. תוצאות חיזוי", H1),
-        rtl(f"השדה המרבי שנחזה בחללים שנבדקו: {_num(worst)} mG." if worst is not None else "לא התקבל ערך מחושב."),
+        rtl(
+            f"השדה המרבי בחללי שהייה ממושכת: {_num(worst_continuous.max_mg)} mG ({worst_continuous.floor_name}, {worst_continuous.room_name})."
+            if worst_continuous
+            else "לא התקבל ערך מחושב בחללי שהייה ממושכת."
+        ),
+        rtl(f"השדה המרבי בכל החללים: {_num(worst)} mG." if worst is not None else ""),
         Spacer(1, 4),
         _table(
-            ["קומה", "חדר", "Expected", "Conservative", "Worst-case"],
+            ["קומה", "מרבי בשהייה ממושכת (mG)", "היכן", "מרבי בשהייה לא ממושכת (mG)", "היכן"],
             [
                 [
-                    r.floor_name,
-                    r.room_name,
-                    _num(r.sensitivity.get("expected_mg")),
-                    _num(r.sensitivity.get("conservative_mg")),
-                    _num(r.sensitivity["worst_case_mg"]) if "worst_case_mg" in r.sensitivity else "לא הוגדרה אי ודאות",
+                    name,
+                    _num(a.max_mg) if (a := highest(continuous, name)) else "—",
+                    a.room_name if a else "",
+                    _num(b.max_mg) if (b := highest(passing_through, name)) else "—",
+                    b.room_name if b else "",
                 ]
-                for r in _worst_per_room(results)
+                for name in floor_order
             ],
-            [0.15, 0.3, 0.17, 0.19, 0.19],
+            [0.16, 0.16, 0.26, 0.16, 0.26],
         ),
     ]
 
     # 14-15
-    story += [PageBreak(), rtl("13. תוכניות עם נקודות חישוב ו-Heatmaps", H1)]
+    story += [PageBreak(), rtl("13. מפות השדה המגנטי על התוכניות", H1)]
     story += _heatmaps(db, project, run) or [rtl("אין נקודות חישוב להצגה.")]
+    story += _views_3d(db, run)
 
     # 16
+    shown = sorted([r for r in continuous if (r.max_mg or 0) >= 1.0], key=lambda r: -(r.max_mg or 0))[:80]
+    shown += sorted([r for r in passing_through if (r.max_mg or 0) >= 10.0], key=lambda r: -(r.max_mg or 0))[:40]
     story += [
         rtl("14. טבלת תוצאות", H1),
+        rtl("חללי שהייה ממושכת שהשדה בהם 1 mG ומעלה, וחללים ללא שהייה ממושכת שהשדה בהם 10 mG ומעלה, מהגבוה לנמוך. כל החללים שמורים במערכת.", SMALL),
+        Spacer(1, 4),
         _table(
-            ["מס׳", "קומה", "חדר", "שימוש", "מקור", "מרחק (מ׳)", "חיזוי mG", "סיווג", "סטטוס"],
+            ["מס׳", "קומה", "חלל", "סיווג", "מקור עיקרי", "מרחק (מ׳)", "שדה מרבי (mG)", "סטטוס"],
             [
                 [
                     str(i),
                     r.floor_name,
-                    f"{r.room_name} ({r.height_m:g} מ׳)",
-                    r.usage_type,
+                    r.room_name,
+                    OCCUPANCY_LABELS.get(r.occupancy_classification, r.occupancy_classification),
                     r.dominant_source_tag,
                     _num(r.dominant_distance_m),
                     _num(r.max_mg),
-                    OCCUPANCY_LABELS.get(r.occupancy_classification, r.occupancy_classification),
                     STATUS_LABELS.get(r.status, r.status),
                 ]
-                for i, r in enumerate(results, 1)
-            ],
-            [0.05, 0.08, 0.16, 0.1, 0.11, 0.07, 0.08, 0.13, 0.22],
+                for i, r in enumerate(shown, 1)
+            ]
+            or [["—", "", "אין חללים מעל הספים", "", "", "", "", ""]],
+            [0.05, 0.1, 0.23, 0.13, 0.1, 0.08, 0.1, 0.21],
         ),
     ]
 
@@ -575,7 +594,7 @@ def build_report_pdf(
         _key_values(
             [
                 ("מזהה ריצה", run.id),
-                ("Hash קלט", run.input_hash),
+                ("חתימת קלט", run.input_hash),
                 ("גרסת מנוע", run.engine_version),
                 ("מזהה תרחיש", scenario["id"]),
             ]
@@ -596,7 +615,7 @@ def build_report_pdf(
             canvas.translate(-PAGE_WIDTH / 2, -PAGE_HEIGHT / 2)
         canvas.setFont("Arimo", 8)
         canvas.setFillColor(colors.grey)
-        canvas.drawCentredString(PAGE_WIDTH / 2, 1 * cm, f"{doc.page} | Galit ELF Prediction System | v{report.version}")
+        canvas.drawCentredString(PAGE_WIDTH / 2, 1 * cm, f"{doc.page} | Galit ELF Projection | v{report.version}")
         canvas.restoreState()
 
     buffer = io.BytesIO()
@@ -607,9 +626,36 @@ def build_report_pdf(
         rightMargin=MARGIN,
         topMargin=MARGIN,
         bottomMargin=MARGIN,
-        title=f"ELF Prediction Report v{report.version}",
+        title=f"דוח חיזוי שדות מגנטיים - גרסה {report.version}",
     ).build(story, onFirstPage=decorate, onLaterPages=decorate)
     return buffer.getvalue()
+
+
+def _views_3d(db: Session, run: CalculationRun) -> list:
+    """The building in 3D, a page for each group of floors, bottom up."""
+    from .view3d import building_view, floor_groups
+
+    floors = list(db.scalars(select(Floor).where(Floor.project_id == run.project_id)))
+    story = [PageBreak(), rtl("תצוגה תלת-ממדית", H1)]
+    story.append(
+        rtl(
+            "כל קומה מוצגת כמישור, צבוע לפי השדה המגנטי בגובה החישוב, והקומות מסודרות זו מעל זו. "
+            "המרווח בין הקומות הוגדל כדי שכל מישור ייראה. המקורות מוצגים במקומם: שנאים ולוחות כגוף, קווי הזנה בגובה התקרה, ופירים כקו אנכי בין הקומות.",
+            SMALL,
+        )
+    )
+    for group in floor_groups(floors):
+        image = building_view(db, run, group, run.heights_m[0])
+        if image is None:
+            continue
+        image.thumbnail((1500, 2200), PilImage.LANCZOS)
+        buffer = io.BytesIO()
+        image.save(buffer, "JPEG", quality=85, optimize=True)
+        buffer.seek(0)
+        scale = min(CONTENT_WIDTH / image.width, 22 * cm / image.height)
+        names = " · ".join(f.name for f in sorted(group, key=lambda f: f.elevation_m or 0))
+        story.append(KeepTogether([rtl(names, H2), Image(buffer, width=image.width * scale, height=image.height * scale)]))
+    return story
 
 
 def _worst_per_room(results: list[CalculationResult]) -> list[CalculationResult]:

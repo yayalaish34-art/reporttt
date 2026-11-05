@@ -8,10 +8,13 @@ recorded as an ENGINEERING_ASSUMPTION. What the person drew by hand is kept.
 
 import json
 import math
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageFilter
+from shapely.geometry import Polygon as ShapelyPolygon
+from shapely.ops import unary_union
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -42,17 +45,18 @@ DEFAULT_SETTINGS = {
     "kinds": {},
 }
 
+# Tags in Hebrew, as they appear on the plans and in the report.
 TAG_PREFIX = {
-    "TRANSFORMER": "T",
-    "METER_BOARD": "MB",
-    "DISTRIBUTION_PILLAR": "P",
-    "MAIN_BOARD": "LB",
-    "EV_CHARGING": "EV",
-    "GENERATOR": "G",
-    "PV_INVERTER": "PV",
-    "FEEDER": "F",
-    "BUSBAR": "BB",
-    "RISER": "R",
+    "TRANSFORMER": "ש",
+    "METER_BOARD": "מ",
+    "DISTRIBUTION_PILLAR": "פל",
+    "MAIN_BOARD": "ל",
+    "EV_CHARGING": "ט",
+    "GENERATOR": "ג",
+    "PV_INVERTER": "ממ",
+    "FEEDER": "ק",
+    "BUSBAR": "פס",
+    "RISER": "פ",
 }
 CONTINUOUS_USES = ("RESIDENTIAL", "OFFICE", "COMMERCIAL", "PUBLIC", "MIXED")
 
@@ -186,11 +190,6 @@ def floor_name(level: int, read_name: str) -> str:
     if level == 0:
         return "קומת קרקע"
     return f"מרתף {level}" if level < 0 else f"קומה {level}"
-
-
-def elevation(level: int, settings: dict) -> float | None:
-    height = settings["basement_height_m"] if level < 0 else settings["floor_height_m"]
-    return None if height is None else round(level * height, 3)
 
 
 # ── Aligning floors to one another ──────────────────────────────────────
@@ -343,50 +342,6 @@ def riser_share(level: int, top: int) -> float:
     return (top - level + 1) / top
 
 
-def missing_answers(project: Project, analyses: list[PageAnalysis]) -> list[dict]:
-    """The questions still open. Building refuses until there are none."""
-    settings = settings_of(project)
-    missing = []
-    for field, label in (
-        ("floor_height_m", "גובה קומה טיפוסית"),
-        ("basement_height_m", "גובה קומת מרתף"),
-        ("typical_load_pct", "אחוז העמסה אופייני"),
-    ):
-        if settings[field] is None:
-            missing.append({"field": field, "message": f"חסר: {label}"})
-    choices = plan_choices(analyses, settings)
-    scales = resolve_scales(choices, settings)
-    for level, choice in choices.items():
-        if not scales[level]["denominator"]:
-            chosen = choice["chosen"]
-            missing.append({"field": f"pages.{chosen['key']}.scale_denominator", "message": f"חסר קנה מידה לתוכנית של {floor_name(level, chosen['name'])}"})
-    used_pages = {choice["chosen"]["key"] for choice in choices.values()}
-    library = load_library()
-    asked = set()
-    for source in detected_sources(analyses):
-        answer = settings["sources"].get(source["key"]) or {}
-        kind = answer.get("kind") or source["kind"]
-        if source["page_key"] not in used_pages or not is_included(kind, choices_for_page(choices, source["page_key"]), answer):
-            continue
-        if max_current_for(source, answer, settings) is None and kind not in asked:
-            asked.add(kind)
-            missing.append({"field": f"kinds.{kind}.max_current_a", "message": f"חסר זרם מרבי: {library[kind]['label']}"})
-    return missing
-
-
-def max_current_for(source: dict, answer: dict, settings: dict) -> float | None:
-    """The source's own answer, then what its sheet says, then the answer for its kind
-    (a current, or for a transformer its rating in kVA)."""
-    kind = answer.get("kind") or source["kind"]
-    for_kind = settings["kinds"].get(kind) or {}
-    return (
-        answer.get("max_current_a")
-        or suggested_max_current(source)
-        or for_kind.get("max_current_a")
-        or current_from_kva(for_kind.get("kva"))
-    )
-
-
 def _clear_auto(db: Session, project: Project) -> None:
     for model in (ElectricalSource, Room):
         for row in db.scalars(select(model).where(model.project_id == project.id, model.detection_method == AUTO)):
@@ -402,24 +357,292 @@ def _rebase(db: Session, floor: Floor, scale: float, origin: list[float]) -> Non
     _rebase_floor_geometry(db, floor, scale, origin)
 
 
+def defaults() -> dict:
+    return json.loads(LIBRARY_PATH.read_text(encoding="utf-8"))["defaults"]
+
+
+def missing_answers(project: Project, analyses: list[PageAnalysis]) -> list[dict]:
+    """Nothing is asked: every value comes from the plans, or from a stated default."""
+    return []
+
+
+def max_current_for(source: dict, answer: dict, settings: dict) -> float | None:
+    """What the person or the plan says, before anything is derived."""
+    kind = answer.get("kind") or source["kind"]
+    for_kind = settings["kinds"].get(kind) or {}
+    return (
+        answer.get("max_current_a")
+        or suggested_max_current(source)
+        or for_kind.get("max_current_a")
+        or current_from_kva(for_kind.get("kva"))
+    )
+
+
+# ── Floor levels ────────────────────────────────────────────────────────
+
+
+def resolve_elevations(choices: dict[int, dict], settings: dict) -> dict[int, dict]:
+    """Each floor's level and floor-to-floor height, read from the plans where written.
+
+    A floor whose level is not written is placed from the nearest one that is, at the
+    typical height the written ones show; with none written, at the default heights.
+    """
+    base = defaults()
+    read: dict[int, list[float]] = {}
+    for level, choice in choices.items():
+        for page in choice["pages"]:
+            for floor in page["result"].get("floors") or []:
+                if floor.get("level") == level and floor.get("elevation_m") is not None:
+                    read.setdefault(level, []).append(float(floor["elevation_m"]))
+    known = {level: sorted(values)[len(values) // 2] for level, values in read.items()}
+
+    def typical(above: bool) -> float:
+        answered = settings["floor_height_m"] if above else settings["basement_height_m"]
+        if answered:
+            return float(answered)
+        steps = [
+            (known[b] - known[a]) / (b - a)
+            for a in known
+            for b in known
+            if b > a and (a >= 0 if above else b <= 0) and 2.4 <= (known[b] - known[a]) / (b - a) <= 6
+        ]
+        if steps:
+            return sorted(steps)[len(steps) // 2]
+        return base["floor_height_m"] if above else base["basement_height_m"]
+
+    up, down = typical(True), typical(False)
+    resolved = {}
+    for level in sorted(choices):
+        if level in known:
+            resolved[level] = {"elevation_m": round(known[level], 3), "basis": "READ"}
+            continue
+        below = [k for k in known if k < level]
+        above = [k for k in known if k > level]
+        if below and above:
+            low, high = max(below), min(above)
+            value = known[low] + (known[high] - known[low]) * (level - low) / (high - low)
+            resolved[level] = {"elevation_m": round(value, 3), "basis": "DERIVED"}
+            continue
+        anchors = sorted(known, key=lambda k: abs(k - level))
+        if anchors:
+            anchor = anchors[0]
+            value = known[anchor]
+            for step in range(anchor, level, 1 if level > anchor else -1):
+                value += (up if step >= 0 else down) * (1 if level > anchor else -1)
+        else:
+            value = level * (up if level >= 0 else down)
+        resolved[level] = {"elevation_m": round(value, 3), "basis": "DERIVED"}
+
+    levels = sorted(resolved)
+    for index, level in enumerate(levels):
+        height = up if level >= 0 else down
+        if index + 1 < len(levels) and levels[index + 1] == level + 1:
+            gap = resolved[level + 1]["elevation_m"] - resolved[level]["elevation_m"]
+            if 2.0 <= gap <= 8.0:
+                height = gap
+        resolved[level]["height_m"] = round(height, 3)
+    return resolved
+
+
+# ── Currents ────────────────────────────────────────────────────────────
+
+
+def apartments_on(result: dict) -> int:
+    """How many flats a floor's plan shows: by their marked letter or number, or else by kitchens."""
+    rooms = [z for z in result.get("zones") or [] if z.get("kind") == "APARTMENT_ROOM"]
+    units = {z["unit"] for z in rooms if z.get("unit")}
+    if units:
+        return len(units)
+    return sum(1 for z in rooms if "מטבח" in (z.get("label") or ""))
+
+
+class Currents:
+    """The maximum current of each source, and in words where it came from.
+
+    In order: an answer given through the API, the value written on the plan, then what
+    the building itself implies (the transformer's rating, the flats the shaft feeds),
+    then the library's default. Each derived value is reported as an assumption.
+    """
+
+    def __init__(self, settings: dict, plans: dict[int, dict], detected_kinds: dict[str, list[dict]]):
+        self.settings = settings
+        self.base = defaults()
+        self.flat_a = self.base["apartment_current_a"]
+        self.apartments = {level: apartments_on(plan["result"]) for level, plan in plans.items() if level >= 1}
+        self.top = max([level for level, count in self.apartments.items() if count], default=0)
+        self.top_level = max([level for level in plans if level >= 1], default=1)
+        transformers = detected_kinds.get("TRANSFORMER", [])
+        kvas = [t.get("kva") for t in transformers if t.get("kva")] or ([self.base["transformer_kva"]] if transformers else [])
+        self.transformer_a = max((current_from_kva(kva) for kva in kvas), default=None)
+        self.counts = {kind: len(items) for kind, items in detected_kinds.items()}
+        self.notes: dict[str, str] = {}
+
+    def total_flats_a(self) -> float:
+        return sum(self.apartments.values()) * self.flat_a
+
+    def riser(self, level: int, shafts_here: int) -> tuple[float, str]:
+        answered = (self.settings["kinds"].get("RISER") or {}).get("max_current_a")
+        if answered:
+            return answered * riser_share(level, self.top_level), "הוזן, יורד מקומה לקומה"
+        if self.top and self.total_flats_a():
+            fed = sum(count for floor, count in self.apartments.items() if floor >= max(level, 1))
+            current = max(fed, 1) * self.flat_a / max(shafts_here, 1)
+            return current, f"{self.flat_a:g}A לדירה × הדירות שהפיר מזין מעל הקומה"
+        default = self.base["currents_a"]["RISER"]
+        return default * riser_share(level, self.top_level), "ברירת מחדל, יורד מקומה לקומה"
+
+    def of(self, kind: str, detected: dict, answer: dict) -> tuple[float, str]:
+        own = max_current_for(detected, answer, self.settings)
+        if own:
+            written = answer.get("max_current_a") is None and suggested_max_current(detected)
+            return own, "נקרא מהתוכנית" if written else "הוזן"
+        if kind == "TRANSFORMER":
+            return current_from_kva(self.base["transformer_kva"]), f"שנאי {self.base['transformer_kva']:g}kVA (ברירת מחדל)"
+        if kind in ("FEEDER", "BUSBAR", "DISTRIBUTION_PILLAR"):
+            if self.transformer_a:
+                return self.transformer_a, "זרם השנאי שמזין אותו"
+            if self.total_flats_a():
+                return self.total_flats_a(), f"{self.flat_a:g}A לכל דירה במבנה"
+        return self.base["currents_a"][kind], "ברירת מחדל מספריית המערכת"
+
+
+# ── Rooms ───────────────────────────────────────────────────────────────
+
+STAY_KINDS = ("APARTMENT_ROOM", "OFFICE", "COMMERCIAL", "PUBLIC_ROOM")
+ZONE_LABELS = {
+    "APARTMENT_ROOM": "חדר בדירה",
+    "OFFICE": "משרד",
+    "COMMERCIAL": "שטח מסחרי",
+    "PUBLIC_ROOM": "חדר ציבורי",
+    "CORRIDOR": "מסדרון",
+    "LOBBY": "לובי",
+    "STAIRS": "חדר מדרגות",
+    "ELEVATOR": "מעלית",
+    "SHAFT": "פיר",
+    "STORAGE": "מחסן",
+    "TECHNICAL": "חדר טכני",
+    "PARKING": "חניה",
+}
+
+
+def _find_rooms(document: Document, plan: dict) -> dict:
+    """The rooms on one plan. Pure, so plans can be worked on side by side."""
+    from . import rooms as room_finder
+
+    key = f"{plan['denominator']}"
+    if not plan["result"].get("zones") or not plan["scale"]:
+        return {"key": key, "rooms": [], "footprint_px": []}
+    with storage.local_copy(render_page_png(document, plan["row"].page)) as path:
+        return {"key": key, **room_finder.segment(path, plan["box"], plan["scale"], plan["result"]["zones"])}
+
+
+def plans_rooms(documents: dict[str, Document], plans: dict[int, dict]) -> dict[str, dict]:
+    """Rooms for every plan in use, found once and kept with its reading."""
+    distinct = {plan["key"]: plan for plan in plans.values()}
+    found, todo = {}, []
+    for key, plan in distinct.items():
+        cache = plan["result"].get("rooms_cache") or {}
+        if cache.get("key") == f"{plan['denominator']}":
+            found[key] = cache
+        else:
+            todo.append(plan)
+    with ThreadPoolExecutor(4) as pool:
+        for plan, result in zip(todo, pool.map(lambda p: _find_rooms(documents[p["document_id"]], p), todo)):
+            found[plan["key"]] = result
+            plan["row"].result = {**plan["result"], "rooms_cache": result}
+    return found
+
+
+def _room(project, floor, plan, name, kind, polygon, holes, continuous, area) -> Room:
+    return Room(
+        project_id=project.id,
+        floor_id=floor.id,
+        name=name[:200],
+        polygon_m=polygon,
+        holes_m=holes or None,
+        area_m2=round(area, 2),
+        usage_type=kind,
+        suggested_occupancy="CONTINUOUS_OCCUPANCY" if continuous else "NON_CONTINUOUS_OCCUPANCY",
+        occupancy_classification="CONTINUOUS_OCCUPANCY" if continuous else "NON_CONTINUOUS_OCCUPANCY",
+        occupancy_confirmed=True,
+        confidence="MEDIUM",
+        detection_method=AUTO,
+        source_document_id=plan["document_id"],
+        page=plan["page"],
+    )
+
+
+def build_rooms(project, floor: Floor, plan: dict, found: dict) -> list[Room]:
+    """Every room the plan shows, and the rest of the floor as one more zone.
+
+    Inside a flat, an office or a shop is prolonged occupancy; a corridor, a lobby, stairs,
+    an elevator, a shaft, storage, a technical room or parking is not. What no room covers
+    is counted by the floor's use: prolonged on a floor people live or work on.
+    """
+    scale, origin = floor.scale_m_per_px, floor.origin_px
+    world = lambda points: [to_world(p, scale, origin) for p in points]
+    outline = [ShapelyPolygon(world(part)).buffer(0) for part in found.get("footprint_px") or []]
+    if not outline:
+        x0, y0, x1, y1 = plan["box"]
+        outline = [ShapelyPolygon(world([[x0, y1], [x1, y1], [x1, y0], [x0, y0]]))]
+    building = unary_union(outline)
+    made: list[Room] = []
+    shapes = []
+    for room in found.get("rooms") or []:
+        polygon = world(room["polygon_px"])
+        # A room that grew out through a wide opening is cut back to the building.
+        shape = ShapelyPolygon(polygon).buffer(0).intersection(building)
+        if shape.is_empty or shape.area < 0.4:
+            continue
+        if shape.geom_type == "MultiPolygon":
+            shape = max(shape.geoms, key=lambda part: part.area)
+        shapes.append(shape)
+        label = room["label"] or ZONE_LABELS[room["kind"]]
+        name = f"{label} (דירה {room['unit']})" if room.get("unit") and room["kind"] == "APARTMENT_ROOM" else label
+        made.append(
+            _room(project, floor, plan, name, ZONE_LABELS[room["kind"]], [list(c) for c in shape.exterior.coords[:-1]], None,
+                  room["kind"] in STAY_KINDS, shape.area)
+        )
+
+    rest = building.difference(unary_union(shapes)) if shapes else building
+    parts = [part for part in (rest.geoms if hasattr(rest, "geoms") else [rest]) if part.geom_type == "Polygon" and part.area >= 1.0]
+    continuous = plan["use"] in CONTINUOUS_USES or plan["use"] is None
+    for number, part in enumerate(sorted(parts, key=lambda p: -p.area), start=1):
+        name = "שאר שטח הקומה" if len(parts) == 1 else f"שאר שטח הקומה {number}"
+        holes = [[list(c) for c in ring.coords[:-1]] for ring in part.interiors]
+        made.append(
+            _room(project, floor, plan, name, "שטח כללי", [list(c) for c in part.exterior.coords[:-1]], holes,
+                  continuous, part.area)
+        )
+    return made
+
+
+# ── Building the model ──────────────────────────────────────────────────
+
+
 def build_model(db: Session, project: Project, user: User) -> dict:
-    """Rebuilds every AUTO floor, source and zone from the stored analyses and answers."""
+    """Rebuilds every AUTO floor, source and zone from the stored readings."""
     library = load_library()
+    base = defaults()
     settings = settings_of(project)
     analyses = list(db.scalars(select(PageAnalysis).where(PageAnalysis.project_id == project.id)))
     documents = {d.id: d for d in db.scalars(select(Document).where(Document.project_id == project.id))}
     analyses = [a for a in analyses if a.document_id in documents]
     choices = plan_choices(analyses, settings)
     scales = resolve_scales(choices, settings)
+    elevations = resolve_elevations(choices, settings)
 
     plans = {}
     for level, choice in choices.items():
         chosen = choice["chosen"]
         row, result = chosen["row"], chosen["result"]
         page_settings = settings["pages"].get(chosen["key"]) or {}
-        denominator = scales[level]["denominator"]
+        denominator = scales[level]["denominator"] or base["scale_denominator"]
+        basis = scales[level]["basis"] if scales[level]["denominator"] else "DEFAULT"
         plans[level] = {
             "key": chosen["key"],
+            "row": row,
+            "result": result,
             "document_id": row.document_id,
             "page": row.page,
             "name": floor_name(level, chosen["name"]),
@@ -427,7 +650,7 @@ def build_model(db: Session, project: Project, user: User) -> dict:
             "box": result.get("building_box") or [0, 0, *(result.get("image_px") or [0, 0])],
             "scale": m_per_px(result, denominator),
             "denominator": denominator,
-            "scale_basis": scales[level]["basis"],
+            "scale_basis": basis,
             "sources": merge_risers(result.get("sources") or [], m_per_px(result, denominator)),
         }
     alignment = align_floors(plans, documents)
@@ -458,8 +681,8 @@ def build_model(db: Session, project: Project, user: User) -> dict:
             _rebase(db, floor, plan["scale"], aligned["origin_px"])
         floor.name = plan["name"]
         floor.sort_order = order
-        floor.elevation_m = elevation(level, settings)
-        floor.ceiling_height_m = settings["basement_height_m"] if level < 0 else settings["floor_height_m"]
+        floor.elevation_m = elevations[level]["elevation_m"]
+        floor.ceiling_height_m = elevations[level]["height_m"]
         floor.plan_document_id = plan["document_id"]
         floor.plan_page = plan["page"]
         floor.scale_m_per_px = plan["scale"]
@@ -468,14 +691,14 @@ def build_model(db: Session, project: Project, user: User) -> dict:
             "auto_level": level,
             "scale_denominator": plan["denominator"],
             "scale_basis": plan["scale_basis"],
+            "elevation_basis": elevations[level]["basis"],
             "alignment": {k: v for k, v in (aligned or {}).items() if k != "origin_px"},
         }
         floors[level] = floor
     db.flush()
 
-    counters: dict[str, int] = {}
-    created_sources = []
     used_tags = set(db.scalars(select(ElectricalSource.tag).where(ElectricalSource.project_id == project.id)))
+    counters: dict[str, int] = {}
     shared_tags: dict[str, str] = {}
 
     def next_tag(kind: str, shared_key: str | None = None) -> str:
@@ -492,30 +715,38 @@ def build_model(db: Session, project: Project, user: User) -> dict:
             shared_tags[shared_key] = tag
         return tag
 
-    load = (settings["typical_load_pct"] or 0) / 100.0
-    top = top_occupied_level(plans)
+    included: dict[int, list[tuple[dict, str, dict]]] = {}
+    by_kind: dict[str, list[dict]] = {}
+    for level in sorted(plans):
+        plan = plans[level]
+        for detected in plan["sources"]:
+            key = source_key(plan["document_id"], plan["page"], detected["index"])
+            answer = settings["sources"].get(key) or {}
+            kind = answer.get("kind") or detected["kind"]
+            if is_included(kind, choices_for_page(choices, plan["key"]), answer):
+                included.setdefault(level, []).append((detected, kind, answer))
+                by_kind.setdefault(kind, []).append(detected)
+    currents = Currents(settings, plans, by_kind)
+    load = (settings["typical_load_pct"] or base["typical_load_pct"]) / 100.0
+    current_notes: dict[str, set] = {}
+
+    created_sources = []
     risers_by_level: dict[int, list[ElectricalSource]] = {}
     for level in sorted(plans):
         plan, floor = plans[level], floors[level]
         if floor.scale_m_per_px is None or not floor.origin_px:
             continue
-        document_id, page = plan["document_id"], plan["page"]
-        for detected in plan["sources"]:
-            key = source_key(document_id, page, detected["index"])
-            answer = settings["sources"].get(key) or {}
-            kind = answer.get("kind") or detected["kind"]
-            if not is_included(kind, choices_for_page(choices, plan["key"]), answer):
-                continue
+        shafts_here = sum(1 for _, kind, _ in included.get(level, []) if kind == "RISER")
+        for detected, kind, answer in included.get(level, []):
+            key = source_key(plan["document_id"], plan["page"], detected["index"])
             spec = library[kind]
-            max_current = max_current_for(detected, answer, settings)
-            own_current = answer.get("max_current_a") or suggested_max_current(detected)
-            if kind == "RISER" and max_current is not None and not own_current:
-                max_current *= riser_share(level, top)
-            # A sheet that covers several floors carries the same equipment on each: one tag per floor.
+            if kind == "RISER" and not (answer.get("max_current_a") or suggested_max_current(detected)):
+                max_current, note = currents.riser(level, shafts_here)
+            else:
+                max_current, note = currents.of(kind, detected, answer)
+            current_notes.setdefault(spec["label"], set()).add(note)
             base_tag = next_tag(kind, shared_key=key)
             tag = base_tag if len(choices_for_page(choices, plan["key"])) == 1 else f"{base_tag}.{level}"
-            if tag in used_tags and tag != base_tag:
-                tag = f"{tag}b"
             used_tags.add(tag)
 
             source = ElectricalSource(
@@ -527,9 +758,9 @@ def build_model(db: Session, project: Project, user: User) -> dict:
                 confidence=detected.get("confidence", "LOW"),
                 detection_method=AUTO,
                 user_verified=answer.get("confirmed", detected.get("confidence") != "LOW"),
-                source_document_id=document_id,
-                page=page,
-                notes=" · ".join(x for x in (detected.get("label"), detected.get("rating_text")) if x),
+                source_document_id=plan["document_id"],
+                page=plan["page"],
+                notes=" · ".join(x for x in (detected.get("label"), detected.get("rating_text"), note) if x),
             )
             ensure_details(source)
             scale, origin = floor.scale_m_per_px, floor.origin_px
@@ -546,11 +777,9 @@ def build_model(db: Session, project: Project, user: User) -> dict:
                 source.geometry = {"points": [to_world(p, scale, origin) for p in detected["path"]]}
             else:
                 point = to_world(detected["point"], scale, origin)
-                bottom = floor.elevation_m
-                ceiling = None if bottom is None or floor.ceiling_height_m is None else bottom + floor.ceiling_height_m
-                source.geometry = {"points": [point, list(point)], "z_values": None if ceiling is None else [bottom, ceiling]}
+                source.geometry = {"points": [point, list(point)], "z_values": [floor.elevation_m, floor.elevation_m + floor.ceiling_height_m]}
 
-            if spec["mounting"] == "ceiling" and floor.ceiling_height_m is not None:
+            if spec["mounting"] == "ceiling":
                 set_field(source, "height_above_floor_m", round(floor.ceiling_height_m - spec["below_ceiling_m"], 3))
             elif spec["mounting"] == "floor":
                 set_field(source, "height_above_floor_m", spec["height_above_floor_m"])
@@ -559,20 +788,16 @@ def build_model(db: Session, project: Project, user: User) -> dict:
                     set_field(source, field, spec[field])
             if detected.get("kva"):
                 set_field(source, "rated_power_kva", detected["kva"])
-            if max_current is not None and load:
-                set_field(source, "current_a", round(max_current * load, 1))
-                set_field(source, "current_basis", "ESTIMATED")
+            set_field(source, "current_a", round(max_current * load, 1))
+            set_field(source, "current_basis", "ESTIMATED")
             db.add(source)
             created_sources.append(source)
             if kind == "RISER":
                 risers_by_level.setdefault(level, []).append(source)
 
-    created_sources += _continue_shafts(
-        project, plans, floors, risers_by_level, settings, library, top, load, lambda: next_tag("RISER")
-    )
+    created_sources += _continue_shafts(project, plans, floors, risers_by_level, currents, library, load, lambda: next_tag("RISER"))
     db.add_all(created_sources)
     db.flush()
-
     for source in created_sources:
         record(db, user, project.id, "source", source.id, "created", None, source.tag, "בנייה אוטומטית")
 
@@ -580,35 +805,16 @@ def build_model(db: Session, project: Project, user: User) -> dict:
     manual_floors = {
         room.floor_id for room in db.scalars(select(Room).where(Room.project_id == project.id, Room.detection_method != AUTO))
     }
+    found_by_plan = plans_rooms(documents, plans)
     for level, floor in floors.items():
         plan = plans[level]
         if floor.id in manual_floors or floor.scale_m_per_px is None or not floor.origin_px:
             continue
-        x0, y0, x1, y1 = plan["box"]
-        corners = [[x0, y1], [x1, y1], [x1, y0], [x0, y0]]
-        polygon = [to_world(p, floor.scale_m_per_px, floor.origin_px) for p in corners]
-        continuous = plan["use"] in CONTINUOUS_USES
-        area = abs(polygon[1][0] - polygon[0][0]) * abs(polygon[2][1] - polygon[1][1])
-        db.add(
-            Room(
-                project_id=project.id,
-                floor_id=floor.id,
-                name=f"{floor.name} (כל הקומה)",
-                polygon_m=polygon,
-                area_m2=area,
-                usage_type=plan["use"] or "",
-                suggested_occupancy="CONTINUOUS_OCCUPANCY" if continuous else "NON_CONTINUOUS_OCCUPANCY",
-                occupancy_classification="CONTINUOUS_OCCUPANCY" if continuous else "NON_CONTINUOUS_OCCUPANCY",
-                occupancy_confirmed=True,
-                confidence="MEDIUM",
-                detection_method=AUTO,
-                source_document_id=plan["document_id"],
-                page=plan["page"],
-            )
-        )
-        zones += 1
+        for room in build_rooms(project, floor, plan, found_by_plan[plan["key"]]):
+            db.add(room)
+            zones += 1
 
-    _record_assumptions(db, project, user, settings, library, created_sources, alignment, list(floors.values()))
+    _record_assumptions(db, project, user, settings, library, created_sources, alignment, list(floors.values()), elevations, current_notes, load)
     invalidate_verification(db, user, project.id, "בנייה אוטומטית של המודל")
     db.flush()
     return {
@@ -619,30 +825,25 @@ def build_model(db: Session, project: Project, user: User) -> dict:
     }
 
 
-def _continue_shafts(project, plans, floors, risers_by_level, settings, library, top, load, new_tag) -> list[ElectricalSource]:
+def _continue_shafts(project, plans, floors, risers_by_level, currents, library, load, new_tag) -> list[ElectricalSource]:
     """A shaft runs through every floor between the lowest and highest one it was seen on.
     A floor in between where no shaft was read gets the nearest floor's shafts, below first."""
     if not risers_by_level:
         return []
     spec = library["RISER"]
-    kind_current = (settings["kinds"].get("RISER") or {}).get("max_current_a")
     seen = sorted(risers_by_level)
     added = []
     for level in sorted(plans):
         floor = floors.get(level)
         if not seen[0] < level < seen[-1] or level in risers_by_level or floor is None:
             continue
-        if floor.scale_m_per_px is None or not floor.origin_px or floor.elevation_m is None or floor.ceiling_height_m is None:
+        if floor.scale_m_per_px is None or not floor.origin_px:
             continue
         below = [l for l in seen if l < level]
         source_level = below[-1] if below else min(l for l in seen if l > level)
-        for template in risers_by_level[source_level]:
-            if kind_current:
-                current = kind_current * riser_share(level, top) * load
-            elif template.current_a is not None:
-                current = template.current_a * riser_share(level, top) / riser_share(source_level, top)
-            else:
-                continue
+        templates = risers_by_level[source_level]
+        current, _ = currents.riser(level, len(templates))
+        for template in templates:
             point = list(template.geometry["points"][0])
             riser = ElectricalSource(
                 project_id=project.id,
@@ -658,7 +859,7 @@ def _continue_shafts(project, plans, floors, risers_by_level, settings, library,
             ensure_details(riser)
             for field in ("arrangement", "spacing_m"):
                 set_field(riser, field, spec[field])
-            set_field(riser, "current_a", round(current, 1))
+            set_field(riser, "current_a", round(current * load, 1))
             set_field(riser, "current_basis", "ESTIMATED")
             added.append(riser)
     return added
@@ -691,28 +892,36 @@ def choices_for_page(choices: dict[int, dict], key: str) -> list[int]:
     return [level for level, choice in choices.items() if choice["chosen"]["key"] == key]
 
 
-def _record_assumptions(db, project, user, settings, library, sources, alignment, floors) -> None:
+def _record_assumptions(db, project, user, settings, library, sources, alignment, floors, elevations, current_notes, load) -> None:
     def add(target: str, statement: str, justification: str) -> None:
         db.add(Assumption(project_id=project.id, statement=statement, justification=justification, target=f"AUTO:{target}", created_by=user.id))
 
     add(
         "detection",
-        "מיקום המקורות, הקומות וקנה המידה זוהו אוטומטית מתוכניות החשמל ואושרו על ידי המהנדס.",
-        "זיהוי אוטומטי (מודל ראייה) מתוך תוכניות החשמל שהועלו.",
+        "הקומות, קנה המידה, החדרים ומקורות הקרינה זוהו אוטומטית מתוכניות החשמל והגרמושקה.",
+        "קריאה אוטומטית של התוכניות (מודל ראייה), וקווי הקירות שבתוכנית לגבולות החדרים.",
     )
-    add("load", f"הזרם בחישוב הוא {settings['typical_load_pct']:g}% מהזרם המרבי של כל מקור (זרם אופייני).", "תשובת המהנדס בשאלון.")
     add(
-        "heights",
-        f"גובה קומה טיפוסית {settings['floor_height_m']:g} מ׳, גובה קומת מרתף {settings['basement_height_m']:g} מ׳; קווי הזנה מתחת לתקרה.",
-        "תשובת המהנדס בשאלון; מיקום קווי ההזנה לפי ספריית ברירות המחדל.",
+        "rooms",
+        "בתוך דירה, משרד או חנות השהייה ממושכת. מסדרון, לובי, חדר מדרגות, מעלית, פיר, מחסן, חדר טכני וחניה: שהייה לא ממושכת. "
+        "שטח בקומה שלא זוהה כחדר מסוים נחשב לפי שימוש הקומה: שהייה ממושכת בקומת מגורים או משרדים.",
+        "כלל המערכת. שטח שלא זוהה נחשב כשהייה ממושכת, כך שטעות בזיהוי מחמירה ולא מקלה.",
     )
+    add("load", f"הזרם בחישוב הוא {load * 100:g}% מהזרם המרבי של כל מקור (זרם אופייני).", "ברירת המחדל של המערכת, כנהוג בדוחות חיזוי.")
+    read = [f.name for f in floors if (f.calibration or {}).get("elevation_basis") == "READ"]
+    derived = [f.name for f in floors if (f.calibration or {}).get("elevation_basis") != "READ"]
+    if derived:
+        add(
+            "heights",
+            f"מפלסי הקומות {', '.join(derived)} לא נכתבו בתוכניות, והם חושבו מהמפלסים שנקראו ({', '.join(read) or 'אין'}) ומגובה קומה טיפוסי.",
+            "גובה קומה טיפוסי לפי המפלסים שבתוכניות, ובהיעדרם לפי ברירת המחדל של המערכת.",
+        )
+    for label, notes in sorted(current_notes.items()):
+        add(f"current:{label}", f"{label}: הזרם המרבי לפי {'; '.join(sorted(notes))}.", "נגזר מהתוכניות ומהמבנה; ערך שלא נכתב בתוכנית נלקח מספריית המערכת.")
     kinds = sorted({s.source_type for s in sources})
     for kind, spec in library.items():
         if spec["source_type"] in kinds and "reference_source" in spec:
             add(f"model:{kind}", f"{spec['label']}: עקומת ייחוס מספריית ברירות המחדל.", spec["reference_source"])
-    inferred = [str(f.calibration.get("auto_level")) for f in floors if (f.calibration or {}).get("scale_basis") == "INFERRED"]
-    if inferred:
-        add("scale", f"קנה המידה של התוכניות בקומות {', '.join(inferred)} הוסק מגודל המבנה בקומות האחרות.", "קנה המידה לא נקרא מהתוכנית או לא התאים לשאר הקומות.")
     add(
         "feeders",
         "קווי הזנה ראשיים נכללו במרתפים ובקומת הקרקע בלבד; קווים שזוהו בקומות העליונות הם הזנות לדירות ולא נכללו.",
@@ -721,10 +930,12 @@ def _record_assumptions(db, project, user, settings, library, sources, alignment
     if any(s.source_type == "RISER" for s in sources):
         add(
             "risers",
-            "הזרם בפיר ההזנה יורד מקומה לקומה: מלוא הזרם עד קומה 1, ובכל קומה מעליה חלק יחסי לקומות שמעליה. "
-            "פיר שזוהה בקומות שמעל ומתחת לקומה הושלם גם בה, באותו מיקום.",
-            "כל קומה מזינה את הדירות שבה מהפיר, כך שהזרם בפיר קטן ככל שעולים.",
+            "פיר שזוהה בקומות שמעל ומתחת לקומה הושלם גם בה, באותו מיקום. נקודות בטווח 0.5 מ׳ מכבלי הפיר (בתוך הפיר) אינן נכללות בתוצאות.",
+            "פיר חשמל רציף לאורך המבנה; בתוך הפיר אין שהייה.",
         )
+    inferred = [f.name for f in floors if (f.calibration or {}).get("scale_basis") in ("INFERRED", "DEFAULT")]
+    if inferred:
+        add("scale", f"קנה המידה של התוכניות בקומות {', '.join(inferred)} הוסק מגודל המבנה בקומות האחרות.", "קנה המידה לא נקרא מהתוכנית או לא התאים לשאר הקומות.")
     weak = [str(level) for level, a in alignment.items() if a["method"] == "BOX_CORNER"]
     if weak:
         add("alignment", f"יישור הקומות {', '.join(weak)} נעשה לפי מסגרת המבנה ולא לפי התאמת השרטוט.", "התאמת השרטוטים בין הקומות לא הייתה חד-משמעית.")

@@ -229,18 +229,9 @@ def test_automatic_flow_from_plans_to_report(admin, monkeypatch):  # noqa: F811
     state = api(admin, "GET", f"{base}/auto")
     assert [f["level"] for f in state["floors"]] == [-1, 0]
     assert state["floors"][0]["building_size_m"] == [pytest.approx(21.2, abs=0.1), pytest.approx(14.1, abs=0.1)]
-    missing = {m["field"] for m in state["missing"]}
-    assert missing == {"floor_height_m", "basement_height_m", "typical_load_pct", "kinds.FEEDER.max_current_a"}
-    api(admin, "POST", f"{base}/auto/build", 409)
-
-    api(admin, "PUT", f"{base}/auto/settings", 422, json={"kinds": {"LIGHT": {"max_current_a": 5}}})
-    state = api(
-        admin,
-        "PUT",
-        f"{base}/auto/settings",
-        json={"floor_height_m": 3.2, "basement_height_m": 3.5, "typical_load_pct": 60, "kinds": {"FEEDER": {"max_current_a": 600}}},
-    )
+    # Nothing is asked: heights, currents and the load come from the plans or stated defaults.
     assert state["missing"] == []
+    api(admin, "PUT", f"{base}/auto/settings", 422, json={"kinds": {"LIGHT": {"max_current_a": 5}}})
 
     built = api(admin, "POST", f"{base}/auto/build")
     assert (built["floors"], built["sources"], built["zones"]) == (2, 2, 2)
@@ -249,11 +240,14 @@ def test_automatic_flow_from_plans_to_report(admin, monkeypatch):  # noqa: F811
     assert floors["מרתף 1-"]["origin_px"] == pytest.approx(floors["קומת קרקע"]["origin_px"], abs=1)
 
     sources = {s["tag"]: s for s in api(admin, "GET", f"{base}/sources")}
-    transformer = sources["T1"]
-    assert transformer["current_a"] == pytest.approx(round(630_000 / (math.sqrt(3) * 400)) * 0.6, abs=0.1)
+    transformer_a = round(630_000 / (math.sqrt(3) * 400))
+    transformer = sources["ש1"]
+    assert transformer["current_a"] == pytest.approx(transformer_a * 0.6, abs=0.1)
     assert transformer["detection_method"] == "AUTO" and transformer["missing"] == []
-    assert sources["F1"]["height_above_floor_m"] == pytest.approx(3.2)  # 3.5 m basement, 0.3 m below the ceiling
-    assert sources["F1"]["user_verified"] is False  # LOW confidence waits for the engineer
+    feeder = sources["ק1"]
+    assert feeder["current_a"] == pytest.approx(transformer_a * 0.6, abs=0.1)  # fed by the transformer
+    assert feeder["height_above_floor_m"] == pytest.approx(3.2)  # 3.5 m basement, 0.3 m below the ceiling
+    assert feeder["user_verified"] is False  # LOW confidence until the report is issued
 
     assumptions = [a["statement"] for a in api(admin, "GET", f"{base}/assumptions")]
     assert any("60%" in a for a in assumptions) and any("שנאי" in a for a in assumptions)
@@ -264,7 +258,7 @@ def test_automatic_flow_from_plans_to_report(admin, monkeypatch):  # noqa: F811
     rebuilt = api(admin, "POST", f"{base}/auto/build")
     assert rebuilt["zones"] == 1
     rooms = api(admin, "GET", f"{base}/rooms")
-    assert sorted(r["name"] for r in rooms) == ["מרתף 1- (כל הקומה)", "עמדת ישיבה"]
+    assert sorted(r["name"] for r in rooms) == ["עמדת ישיבה", "שאר שטח הקומה"]
 
     finished = api(admin, "POST", f"{base}/auto/finish")
     assert finished["report"]["version"] == 1
@@ -357,6 +351,75 @@ def test_a_shaft_runs_through_floors_where_it_was_not_read(admin, monkeypatch): 
     assert risers["קומה 2"]["geometry"]["points"][0] == pytest.approx(risers["קומה 1"]["geometry"]["points"][0], abs=0.05)
     # 800 A at full share, half of it at a typical load; floor 2 of 4 carries 3/4, floor 3 carries 2/4.
     assert risers["קומה 1"]["current_a"] == pytest.approx(400)
+    assert risers["קומה 1"]["tag"].startswith("פ")
     assert risers["קומה 2"]["current_a"] == pytest.approx(300)
     assert risers["קומה 3"]["current_a"] == pytest.approx(200)
     assert not any(s["source_type"] == "THREE_PHASE_CABLE" for s in api(admin, "GET", f"{base}/sources"))
+
+
+# ── Levels, rooms and currents from the plans ───────────────────────────
+
+
+def _levels(read: dict[int, float | None]):
+    settings = auto_build.settings_of(type("P", (), {"auto_settings": None})())
+    rows = []
+    for level, elevation in read.items():
+        result = _result(level, 2000, 50)
+        result["floors"][0]["elevation_m"] = elevation
+        rows.append(_Row(f"d{level + 10}:0", result))
+    return auto_build.resolve_elevations(auto_build.plan_choices(rows, settings), settings)
+
+
+def test_floor_levels_are_read_and_the_rest_follow_the_typical_height():
+    levels = _levels({-1: -4.0, 0: 0.0, 1: 3.55, 2: None, 3: 9.79, 4: None})
+    # Floor 2 sits between two read levels: halfway, and floor 1's height follows from it.
+    assert levels[2]["basis"] == "DERIVED" and levels[2]["elevation_m"] == pytest.approx(6.67, abs=0.01)
+    assert levels[1] == {"elevation_m": 3.55, "basis": "READ", "height_m": pytest.approx(3.12, abs=0.01)}
+    assert levels[-1]["height_m"] == pytest.approx(4.0)
+    assert levels[4]["elevation_m"] == pytest.approx(9.79 + levels[3]["height_m"], abs=0.01)
+    # Nothing written at all: the library's default heights.
+    fallback = _levels({-1: None, 0: None, 2: None})
+    assert fallback[-1]["elevation_m"] == -3.5 and fallback[2]["elevation_m"] == pytest.approx(6.4)
+
+
+def test_rooms_follow_the_walls_and_stop_at_doorways(tmp_path):
+    from PIL import Image, ImageDraw
+    from app.services import rooms
+
+    # 1:50 at 150 dpi: about 0.0085 m a pixel. Two rooms with a doorway between, and a corridor.
+    m_per_px = 0.0254 / 150 * 50
+    px = lambda metres: round(metres / m_per_px)
+    image = Image.new("L", (px(14), px(9)), 255)
+    draw = ImageDraw.Draw(image)
+    wall = px(0.2)
+    for x0, y0, x1, y1 in [(1, 1, 13, 1), (1, 8, 13, 8), (1, 1, 1, 8), (13, 1, 13, 8), (7, 1, 7, 5.5), (1, 5.5, 13, 5.5)]:
+        draw.rectangle([px(x0), px(y0), px(x1) + wall, px(y1) + wall], fill=0)
+    draw.rectangle([px(6.9), px(3), px(7.3), px(3.9)], fill=255)  # a 0.9 m doorway between the rooms
+    draw.rectangle([px(3), px(5.4), px(3.9), px(5.8)], fill=255)  # and one into the corridor
+    path = tmp_path / "plan.png"
+    image.save(path)
+
+    zones = [
+        {"kind": "APARTMENT_ROOM", "label": "סלון", "unit": "1", "point": [px(4), px(3)]},
+        {"kind": "APARTMENT_ROOM", "label": "חדר שינה", "unit": "1", "point": [px(10), px(3)]},
+        {"kind": "CORRIDOR", "label": "מסדרון", "unit": None, "point": [px(7), px(6.8)]},
+    ]
+    found = rooms.segment(path, [px(1), px(1), px(13.2), px(8.2)], m_per_px, zones)
+    areas = {room["label"]: room["area_m2"] for room in found["rooms"]}
+    assert areas["סלון"] == pytest.approx(5.8 * 4.3, rel=0.15)
+    assert areas["חדר שינה"] == pytest.approx(5.8 * 4.3, rel=0.15)
+    assert areas["מסדרון"] == pytest.approx(11.8 * 2.3, rel=0.15)
+    assert found["footprint_px"]
+
+
+def test_the_shaft_carries_the_flats_above_it():
+    plans = {
+        level: {"result": {"zones": [{"kind": "APARTMENT_ROOM", "unit": str(n), "label": ""} for n in range(4)]}, "use": "RESIDENTIAL"}
+        for level in range(1, 6)
+    }
+    plans[0] = {"result": {"zones": []}, "use": "MIXED"}
+    settings = auto_build.settings_of(type("P", (), {"auto_settings": None})())
+    currents = auto_build.Currents(settings, plans, {})
+    assert currents.riser(1, 1)[0] == 20 * 25  # 4 flats on each of 5 floors, 25 A each
+    assert currents.riser(4, 2)[0] == 2 * 4 * 25 / 2  # two shafts share floors 4 and 5
+    assert currents.riser(0, 1)[0] == 20 * 25
