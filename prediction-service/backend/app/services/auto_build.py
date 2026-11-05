@@ -622,7 +622,11 @@ def build_rooms(project, floor: Floor, plan: dict, found: dict, equipment: list[
             shape = max(shape.geoms, key=lambda part: part.area)
         shapes.append(shape)
         label = room["label"] or ZONE_LABELS[room["kind"]]
-        name = f"{label} (דירה {room['unit']})" if room.get("unit") and room["kind"] == "APARTMENT_ROOM" else label
+        unit = (room.get("unit") or "").strip()
+        if unit and room["kind"] == "APARTMENT_ROOM":
+            name = f"{label} ({unit if unit.startswith('דירה') else 'דירה ' + unit})"
+        else:
+            name = label
         made.append(
             _room(project, floor, plan, name, ZONE_LABELS[room["kind"]], [list(c) for c in shape.exterior.coords[:-1]], None,
                   room["kind"] in STAY_KINDS, shape.area, STAY_HOURS[room["kind"]])
