@@ -350,12 +350,15 @@ def missing_answers(project: Project, analyses: list[PageAnalysis]) -> list[dict
 
 
 def max_current_for(source: dict, answer: dict, settings: dict) -> float | None:
-    """The source's own answer, then what its sheet says, then the answer for its kind."""
+    """The source's own answer, then what its sheet says, then the answer for its kind
+    (a current, or for a transformer its rating in kVA)."""
     kind = answer.get("kind") or source["kind"]
+    for_kind = settings["kinds"].get(kind) or {}
     return (
         answer.get("max_current_a")
         or suggested_max_current(source)
-        or (settings["kinds"].get(kind) or {}).get("max_current_a")
+        or for_kind.get("max_current_a")
+        or current_from_kva(for_kind.get("kva"))
     )
 
 

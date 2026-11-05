@@ -133,6 +133,15 @@ def test_a_technical_roof_sits_above_the_top_floor():
     assert sorted(auto_build.plan_choices(rows, settings)) == [5, 6]
 
 
+def test_current_comes_from_the_source_then_the_sheet_then_the_kind():
+    settings = auto_build.settings_of(type("P", (), {"auto_settings": {"kinds": {"TRANSFORMER": {"kva": 630}}}})())
+    unread = {"kind": "TRANSFORMER", "kva": None, "current_a": None}
+    assert auto_build.max_current_for(unread, {}, settings) == round(630_000 / (math.sqrt(3) * 400))
+    assert auto_build.max_current_for({**unread, "kva": 1000}, {}, settings) == round(1_000_000 / (math.sqrt(3) * 400))
+    assert auto_build.max_current_for(unread, {"max_current_a": 800}, settings) == 800
+    assert auto_build.max_current_for({"kind": "FEEDER", "kva": None, "current_a": None}, {}, settings) is None
+
+
 def test_callouts_on_one_shaft_are_one_riser():
     sources = [
         {"kind": "RISER", "label": "פיר", "point": [100, 100]},

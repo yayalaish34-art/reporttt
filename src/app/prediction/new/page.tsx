@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { FlowSteps } from '../flow-steps';
 import { ProjectForm } from '../project-form';
 
 export default function NewPrediction() {
@@ -15,22 +16,27 @@ export default function NewPrediction() {
         </div>
       </div>
 
+      <FlowSteps current={1} />
       <div className="explain">
         <p>
           <strong>מה זה פרויקט?</strong> מבנה אחד שעושים לו חיזוי. הלקוח הוא מי שהזמין את העבודה, והפרויקט הוא
-          המבנה עצמו, כך שללקוח אחד יכולים להיות כמה פרויקטים. הפרויקט מרכז את התוכניות, הקומות, החדרים, מקורות
-          החשמל, החישובים והדוח.
+          המבנה עצמו, כך שללקוח אחד יכולים להיות כמה פרויקטים.
         </p>
-        <p>אחרי הפתיחה, שלושה צעדים:</p>
         <ol>
-          <li>מעלים את תוכניות החשמל של כל הקומות ואת הגרמושקה.</li>
-          <li>המערכת קוראת אותן: קומות, קנה מידה, שנאים, לוחות, קווי הזנה ופירים. בודקים את מה שזוהה.</li>
-          <li>עונים על כמה שאלות (גובה קומה, זרמים, אחוז העמסה) ולוחצים &quot;אישור והפקת דוח&quot;.</li>
+          <li>
+            <strong>פרטים:</strong> בוחרים לקוח מה-CRM וממלאים את פרטי המבנה (כאן).
+          </li>
+          <li>
+            <strong>מסמכים ושאלות:</strong> מעלים תוכניות חשמל לכל קומה וגרמושקה, לפי ההנחיות במסך, ועונים על כמה שאלות
+            טכניות (גובה קומה, הספק שנאי, זרמים).
+          </li>
+          <li>
+            <strong>חיזוי אוטומטי:</strong> המערכת קוראת את התוכניות, מציגה מה זוהה לבדיקה, ובלחיצה אחת מפיקה דוח.
+          </li>
         </ol>
-        <p>מי שרוצה לעבוד צעד אחר צעד או לתקן משהו על התוכנית, הלשוניות הידניות נשארו במקומן.</p>
       </div>
 
-      <ProjectForm onSaved={(project) => router.push(`/prediction/projects/${project.id}/auto`)} />
+      <ProjectForm onSaved={(project) => router.push(`/prediction/projects/${project.id}/auto?step=2`)} />
     </>
   );
 }

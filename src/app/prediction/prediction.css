@@ -278,3 +278,47 @@
   margin: 4px 0 0;
   padding-inline-start: 20px;
 }
+
+/* The three-step flow: larger than the old step list, since it is the main navigation. */
+.elf .flow-steps {
+  font-size: 15px;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.elf .flow-steps li {
+  padding: 8px 18px;
+  border-radius: 18px;
+}
+
+.elf .flow-steps li.done .link-button {
+  color: var(--ok);
+}
+
+.elf .doc-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.elf .doc-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+
+.elf .doc-group h3 {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+
+.elf .doc-group ul {
+  margin: 4px 0 8px;
+  padding-inline-start: 18px;
+  font-size: 13px;
+}
+
+.elf .doc-group .files {
+  font-size: 13px;
+  margin: 8px 0 0;
+}

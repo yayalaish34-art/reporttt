@@ -43,7 +43,7 @@ class SettingsIn(BaseModel):
     kinds: dict[str, dict] | None = None
 
 
-_KIND_FIELDS = {"max_current_a": float}
+_KIND_FIELDS = {"max_current_a": float, "kva": float}
 _PAGE_FIELDS = {"scale_denominator": int, "use": str, "plan_for": int}
 _SOURCE_FIELDS = {"include": bool, "kind": str, "max_current_a": float}
 
@@ -78,6 +78,8 @@ def _check_source(name: str, value) -> None:
         raise HTTPException(422, "סוג מקור לא מוכר")
     if name == "max_current_a" and not 0 < value <= 20000:
         raise HTTPException(422, "זרם לא סביר")
+    if name == "kva" and not 0 < value <= 5000:
+        raise HTTPException(422, "הספק לא סביר")
 
 
 def _state(db: Session, project: Project) -> dict:
@@ -188,9 +190,6 @@ def analyze(project_id: str, body: AnalyzeIn, user: User = Depends(current_user)
     else:
         row.result, row.created_at, row.created_by = result, utcnow(), user.id
     row.model = result.get("model", "")
-    # A sheet that turns out to be architectural is filed as such, for the step-by-step screens.
-    if result["sheet_kind"] in ("ELECTRICAL", "ARCHITECTURAL") and document.page_count == 1:
-        document.document_type = result["sheet_kind"]
     db.flush()
     record(db, user, project.id, "page_analysis", row.id, "created", None, f"{document.file_name} p{body.page + 1}: {len(result['sources'])} sources")
     db.commit()
