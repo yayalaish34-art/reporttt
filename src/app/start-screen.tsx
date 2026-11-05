@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { ELF_PROJECTION_URL } from '@/lib/elf-projection';
 
 /**
  * The screen the system opens on.
@@ -74,11 +75,11 @@ export function StartScreen() {
     {
       key: 'prediction',
       title: 'חיזוי קרינה',
-      blurb: 'חיזוי שדה מגנטי ELF על גבי תוכניות, לפני הקמה או אכלוס',
+      blurb: 'חיזוי שדה מגנטי ELF מתוכניות חשמל, במערכת Galit ELF Projection',
       icon: '🧲',
-      newHref: '/prediction/new',
+      newHref: `${ELF_PROJECTION_URL}/new/`,
       newLabel: 'חיזוי חדש',
-      listHref: '/prediction',
+      listHref: `${ELF_PROJECTION_URL}/`,
       listLabel: 'כל הפרויקטים',
     },
   ];

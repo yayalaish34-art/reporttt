@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { FIRST_JOB_NUMBER, JOB_PATHS, listJobNumbers } from '@/lib/job-numbers';
+import { FIRST_JOB_NUMBER, jobHref, listJobNumbers } from '@/lib/job-numbers';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'בקרת Job Number' };
@@ -56,7 +56,7 @@ export default function JobsPage() {
                     <td>{job.inspectorName || '—'}</td>
                     <td>{job.service}</td>
                     <td>
-                      <Link href={`${JOB_PATHS[job.kind]}/${job.reportId}`} prefetch={false}>
+                      <Link href={jobHref(job.kind, job.reportId)} prefetch={false}>
                         לדוח
                       </Link>
                     </td>

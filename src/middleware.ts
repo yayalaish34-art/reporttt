@@ -23,6 +23,10 @@ export function middleware(request: NextRequest) {
   // with the password — the route checks that token itself (`CRM_API_TOKEN`).
   if (request.nextUrl.pathname === '/api/mold/intake') return NextResponse.next();
 
+  // Galit ELF Projection asking the register for a Job Number: a machine with a bearer
+  // token (`JOB_NUMBERS_TOKEN`), checked by the route itself.
+  if (request.nextUrl.pathname === '/api/job-numbers') return NextResponse.next();
+
   const header = request.headers.get('authorization');
   if (header?.startsWith('Basic ')) {
     // `atob` rather than Buffer: middleware runs on the Edge runtime.

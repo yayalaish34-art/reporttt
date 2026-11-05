@@ -3,6 +3,7 @@ import Link from 'next/link';
 import './globals.css';
 import { Brand } from './brand';
 import { FreshSession } from './fresh-session';
+import { ELF_PROJECTION_URL } from '@/lib/elf-projection';
 
 /**
  * The address the site is served from, used to make the icon and preview URLs
@@ -103,7 +104,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <Link href="/asbestos">דוח אסבסט</Link>
               <Link href="/mold">דוח עובשים</Link>
               <Link href="/iaq">איכות אוויר</Link>
-              <Link href="/prediction">חיזוי קרינה</Link>
+              {/* A separate system (Galit ELF Projection) with its own login. */}
+              <a href={ELF_PROJECTION_URL}>חיזוי קרינה</a>
               <Link href="/jobs">Job Number</Link>
               <Link href="/inspectors">בודקים</Link>
               <Link href="/templates">תבניות</Link>

@@ -1,4 +1,5 @@
 import { db, now } from './db';
+import { ELF_PROJECTION_URL } from './elf-projection';
 
 /**
  * The job-number register: one running sequence across every department.
@@ -28,14 +29,19 @@ export const JOB_SERVICES: Record<JobKind, string> = {
 };
 
 /** Where each department's report opens in the editor. */
-export const JOB_PATHS: Record<JobKind, string> = {
+export const JOB_PATHS: Record<Exclude<JobKind, 'prediction'>, string> = {
   radiation: '/reports',
   radon: '/radon',
   asbestos: '/asbestos',
   mold: '/mold',
   iaq: '/iaq',
-  prediction: '/prediction/projects',
 };
+
+/** The link from the register to the report a number belongs to; a prediction lives in its own system. */
+export function jobHref(kind: JobKind, reportId: string): string {
+  if (kind === 'prediction') return `${ELF_PROJECTION_URL}/project/?id=${encodeURIComponent(reportId)}`;
+  return `${JOB_PATHS[kind]}/${reportId}`;
+}
 
 export interface JobDetails {
   customerName: string;
