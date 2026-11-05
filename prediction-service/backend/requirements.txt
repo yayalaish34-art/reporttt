@@ -13,4 +13,5 @@ python-multipart==0.0.33
 reportlab==5.1.0
 shapely==2.2.0
 SQLAlchemy==2.1.6
+uvicorn[standard]==0.54.0
 vercel-blob==0.5.0
