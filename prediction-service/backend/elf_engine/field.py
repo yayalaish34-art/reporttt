@@ -57,7 +57,7 @@ def compute_field(
     group_magnitudes: dict[str, np.ndarray] = {}
 
     for index, source in enumerate(sources):
-        too_close |= source.distance_m(points) < min_distance_m
+        too_close |= source.distance_m(points) < max(min_distance_m, source.keep_out_m)
         if isinstance(source, EmpiricalSource):
             magnitude, outside_curve = source.magnitude_mg(points, current_factor)
             extrapolated |= outside_curve

@@ -91,6 +91,8 @@ class _FilamentSource:
     id: str
     coherence_group: str | None = field(default=None, kw_only=True)
     attenuation_factor: float = field(default=1.0, kw_only=True)
+    # Points this close are inside the source's enclosure (a shaft, a tray), where nobody stands.
+    keep_out_m: float = field(default=0.0, kw_only=True)
 
     @property
     def group(self) -> str:
@@ -203,6 +205,7 @@ class EmpiricalSource:
     current_a: float
     decay_exponent: float | None = None
     attenuation_factor: float = 1.0
+    keep_out_m: float = 0.0
 
     def __post_init__(self):
         if not self.reference_curve:

@@ -75,3 +75,8 @@ EMPIRICAL_MODEL_TYPES = (
     "PANEL_MEASURED_REFERENCE",
     "PANEL_CONSERVATIVE_APPROXIMATION",
 )
+
+# A shaft's cables run inside an enclosure about a metre across: the field inside it is not
+# where anyone stands, so points closer than this to a riser are left out of the results.
+SHAFT_SOURCE_TYPES = ("RISER", "ELECTRICAL_SHAFT")
+SHAFT_KEEP_OUT_M = 0.5

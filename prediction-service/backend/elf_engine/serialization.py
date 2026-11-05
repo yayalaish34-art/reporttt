@@ -14,6 +14,7 @@ def source_from_dict(data: dict):
     shared = {
         "coherence_group": data.get("coherence_group"),
         "attenuation_factor": data.get("attenuation_factor", 1.0),
+        "keep_out_m": data.get("keep_out_m", 0.0),
     }
     if kind == "CONDUCTOR":
         return ConductorSource(
@@ -55,6 +56,7 @@ def source_from_dict(data: dict):
             current_a=data["current_a"],
             decay_exponent=data.get("decay_exponent"),
             attenuation_factor=data.get("attenuation_factor", 1.0),
+            keep_out_m=data.get("keep_out_m", 0.0),
         )
     raise ValueError(f"Unknown source kind: {kind!r}")
 

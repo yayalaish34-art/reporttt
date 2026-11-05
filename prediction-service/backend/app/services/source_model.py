@@ -4,7 +4,14 @@ The single place that decides which fields each source type requires, so the
 questionnaire, the readiness gate and the calculation can never disagree.
 """
 
-from ..constants import BUSBAR_SOURCE_TYPE, LINE_SOURCE_TYPES, PANEL_SOURCE_TYPES, TRANSFORMER_SOURCE_TYPE
+from ..constants import (
+    BUSBAR_SOURCE_TYPE,
+    LINE_SOURCE_TYPES,
+    PANEL_SOURCE_TYPES,
+    SHAFT_KEEP_OUT_M,
+    SHAFT_SOURCE_TYPES,
+    TRANSFORMER_SOURCE_TYPE,
+)
 from ..models import Cable, ElectricalSource, Floor, Panel, Transformer
 
 _CABLE_FIELDS = ("arrangement", "spacing_m", "bar_width_m", "phase_currents_a", "phase_angles_deg", "coherence_group")
@@ -165,6 +172,7 @@ def engine_dict(source: ElectricalSource, floor: Floor, override: dict | None = 
             "currents_a": [amps * current_scale for amps in phase_currents],
             "coherence_group": cable.coherence_group,
             "attenuation_factor": attenuation,
+            "keep_out_m": SHAFT_KEEP_OUT_M if source.source_type in SHAFT_SOURCE_TYPES else 0.0,
         }
         if cable.phase_angles_deg:
             data["phase_angles_deg"] = cable.phase_angles_deg

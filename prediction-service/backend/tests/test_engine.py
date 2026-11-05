@@ -376,3 +376,22 @@ def test_normalized_exposure_keeps_its_method_and_inputs():
     assert result.normalization_method == "TIME_WEIGHTED_LINEAR"
     with pytest.raises(ValueError):
         calculate_normalized_exposure(1.0, 25.0, 24.0)
+
+
+def test_points_inside_a_sources_enclosure_are_not_reported():
+    from elf_engine import compute_field, sources_from_dicts
+
+    riser = {
+        "id": "R1",
+        "kind": "THREE_PHASE",
+        "centerline": [[0, 0, 0], [0, 0, 3]],
+        "arrangement": "TREFOIL",
+        "spacing_m": 0.05,
+        "currents_a": [600, 600, 600],
+        "keep_out_m": 0.5,
+    }
+    points = np.array([[0.3, 0, 1], [0.6, 0, 1]])
+    shielded = compute_field(points, sources_from_dicts([riser]))
+    assert np.isnan(shielded.total_mg[0]) and np.isfinite(shielded.total_mg[1])
+    plain = compute_field(points, sources_from_dicts([{**riser, "keep_out_m": 0.0}]))
+    assert np.isfinite(plain.total_mg[0])
