@@ -282,3 +282,81 @@ def test_reading_without_a_key_says_so(admin, monkeypatch):  # noqa: F811
     response = admin.post(f"{base}/auto/analyze", json={"document_id": document["id"], "page": 0})
     assert response.status_code == 502 and "OPENAI_API_KEY" in response.json()["detail"]
     assert api(admin, "GET", f"{base}/auto")["ai_available"] is False
+
+
+# ── What the system decides on its own ──────────────────────────────────
+
+
+def test_feeders_above_the_ground_floor_are_left_out_unless_answered():
+    assert auto_build.is_included("FEEDER", [-1], {})
+    assert auto_build.is_included("FEEDER", [0], {})
+    assert not auto_build.is_included("FEEDER", [3, 4], {})
+    assert auto_build.is_included("FEEDER", [3], {"include": True})
+    assert auto_build.is_included("RISER", [5], {})
+    assert not auto_build.is_included("RISER", [5], {"include": False})
+
+
+def test_the_shaft_current_falls_floor_by_floor():
+    top = 9
+    assert auto_build.riser_share(-1, top) == 1.0
+    assert auto_build.riser_share(0, top) == 1.0
+    assert auto_build.riser_share(1, top) == 1.0
+    assert auto_build.riser_share(5, top) == pytest.approx(5 / 9)
+    assert auto_build.riser_share(9, top) == pytest.approx(1 / 9)
+    assert auto_build.riser_share(10, top) == pytest.approx(1 / 9)  # the technical roof
+
+
+def _tower_pdf(pages: int) -> bytes:
+    buffer = io.BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=landscape(A3))
+    for _ in range(pages):
+        pdf.setLineWidth(3)
+        pdf.rect(200, 150, 600, 400)
+        pdf.rect(300, 250, 120, 90)
+        pdf.rect(600, 380, 150, 100)
+        pdf.line(420, 300, 600, 420)
+        pdf.showPage()
+    pdf.save()
+    return buffer.getvalue()
+
+
+def _tower_reading(document, page):
+    reading = _fake_reading(document, 1)
+    box = reading["building_box"]
+    level = page + 1  # floors 1 to 4
+    sources = []
+    if level in (1, 3):
+        sources.append({"kind": "RISER", "label": "פיר חשמל", "point": [box[0] + 300, box[1] + 200], "kva": None, "current_a": None, "rating_text": None, "confidence": "MEDIUM"})
+    if level == 2:
+        sources.append({"kind": "FEEDER", "label": "מוביל הזנה לדירות", "path": [[box[0] + 100, box[1] + 100], [box[0] + 600, box[1] + 100]], "kva": None, "current_a": None, "rating_text": None, "confidence": "LOW"})
+    return {**reading, "floors": [{"name": f"קומה {level}", "level": level}], "sources": sources}
+
+
+def test_a_shaft_runs_through_floors_where_it_was_not_read(admin, monkeypatch):  # noqa: F811
+    monkeypatch.setattr(plan_ai, "analyze_page", _tower_reading)
+    project_id = make_project(admin)
+    base = f"/api/projects/{project_id}"
+    document = api(admin, "POST", f"{base}/documents", 201, files={"file": ("tower.pdf", _tower_pdf(4), "application/pdf")}, data={"document_type": "ELECTRICAL"})
+    for page in range(4):
+        api(admin, "POST", f"{base}/auto/analyze", json={"document_id": document["id"], "page": page})
+
+    state = api(
+        admin,
+        "PUT",
+        f"{base}/auto/settings",
+        json={"floor_height_m": 3, "basement_height_m": 3.5, "typical_load_pct": 50, "kinds": {"RISER": {"max_current_a": 800}}},
+    )
+    # The upper-floor feeder is left out, so no current is asked for it.
+    assert state["missing"] == []
+    assert [d["included"] for d in state["detected"] if d["kind"] == "FEEDER"] == [False]
+
+    api(admin, "POST", f"{base}/auto/build")
+    floors = {f["id"]: f["name"] for f in api(admin, "GET", f"{base}/floors")}
+    risers = {floors[s["floor_id"]]: s for s in api(admin, "GET", f"{base}/sources") if s["source_type"] == "RISER"}
+    assert sorted(risers) == ["קומה 1", "קומה 2", "קומה 3"]  # floor 2 filled in, floor 4 is above the last one seen
+    assert risers["קומה 2"]["geometry"]["points"][0] == pytest.approx(risers["קומה 1"]["geometry"]["points"][0], abs=0.05)
+    # 800 A at full share, half of it at a typical load; floor 2 of 4 carries 3/4, floor 3 carries 2/4.
+    assert risers["קומה 1"]["current_a"] == pytest.approx(400)
+    assert risers["קומה 2"]["current_a"] == pytest.approx(300)
+    assert risers["קומה 3"]["current_a"] == pytest.approx(200)
+    assert not any(s["source_type"] == "THREE_PHASE_CABLE" for s in api(admin, "GET", f"{base}/sources"))

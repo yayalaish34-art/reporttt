@@ -105,12 +105,14 @@ def _state(db: Session, project: Project) -> dict:
                 key = auto_build.source_key(document_id, page, source["index"])
                 answer = settings["sources"].get(key) or {}
                 kind = answer.get("kind") or source["kind"]
+                levels = auto_build.choices_for_page(choices, chosen["key"])
                 detected.append(
                     {
                         **source,
                         "key": key,
                         "page_key": chosen["key"],
-                        "levels": auto_build.choices_for_page(choices, chosen["key"]),
+                        "levels": levels,
+                        "included": auto_build.is_included(kind, levels, answer),
                         "kind_label": library[kind]["label"],
                         "read_max_current_a": auto_build.suggested_max_current(source),
                         "max_current_a": auto_build.max_current_for(source, answer, settings),
@@ -133,9 +135,7 @@ def _state(db: Session, project: Project) -> dict:
             }
         )
 
-    kinds_used = sorted(
-        {(d["answer"].get("kind") or d["kind"]) for d in detected if d["answer"].get("include") is not False}
-    )
+    kinds_used = sorted({(d["answer"].get("kind") or d["kind"]) for d in detected if d["included"]})
 
     return {
         "ai_available": plan_ai.ai_available(),

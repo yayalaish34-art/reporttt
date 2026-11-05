@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from .. import storage
 from ..audit import invalidate_verification, record
+from .plan_ai import PATH_KINDS
 from ..models import Assumption, Document, ElectricalSource, Floor, PageAnalysis, Project, Room, User
 from .source_model import ensure_details, set_field
 from .visualization import render_page_png
@@ -318,6 +319,30 @@ def suggested_max_current(source: dict) -> float | None:
     return source.get("current_a") or current_from_kva(source.get("kva"))
 
 
+def is_included(kind: str, levels: list[int], answer: dict) -> bool:
+    """Whether a detected source is calculated. An answer decides; otherwise a main feeder
+    above the ground floor is left out: main feeders run in the basement and the ground
+    floor, and what is drawn as a route on an upper floor is the conduit to the flats."""
+    if "include" in answer:
+        return bool(answer["include"])
+    return not (kind in PATH_KINDS and levels and min(levels) >= 1)
+
+
+def top_occupied_level(plans: dict[int, dict]) -> int:
+    occupied = [level for level, plan in plans.items() if level >= 1 and plan.get("use") in CONTINUOUS_USES]
+    return max(occupied) if occupied else max([level for level in plans if level >= 1], default=1)
+
+
+def riser_share(level: int, top: int) -> float:
+    """The part of the shaft's full current that still flows at this floor. Below the first
+    floor the shaft carries everything; above, each floor's flats have been fed below it."""
+    if level <= 0 or top < 1:
+        return 1.0
+    if level > top:
+        return 1.0 / top
+    return (top - level + 1) / top
+
+
 def missing_answers(project: Project, analyses: list[PageAnalysis]) -> list[dict]:
     """The questions still open. Building refuses until there are none."""
     settings = settings_of(project)
@@ -340,9 +365,9 @@ def missing_answers(project: Project, analyses: list[PageAnalysis]) -> list[dict
     asked = set()
     for source in detected_sources(analyses):
         answer = settings["sources"].get(source["key"]) or {}
-        if source["page_key"] not in used_pages or answer.get("include") is False:
-            continue
         kind = answer.get("kind") or source["kind"]
+        if source["page_key"] not in used_pages or not is_included(kind, choices_for_page(choices, source["page_key"]), answer):
+            continue
         if max_current_for(source, answer, settings) is None and kind not in asked:
             asked.add(kind)
             missing.append({"field": f"kinds.{kind}.max_current_a", "message": f"חסר זרם מרבי: {library[kind]['label']}"})
@@ -468,6 +493,8 @@ def build_model(db: Session, project: Project, user: User) -> dict:
         return tag
 
     load = (settings["typical_load_pct"] or 0) / 100.0
+    top = top_occupied_level(plans)
+    risers_by_level: dict[int, list[ElectricalSource]] = {}
     for level in sorted(plans):
         plan, floor = plans[level], floors[level]
         if floor.scale_m_per_px is None or not floor.origin_px:
@@ -476,11 +503,14 @@ def build_model(db: Session, project: Project, user: User) -> dict:
         for detected in plan["sources"]:
             key = source_key(document_id, page, detected["index"])
             answer = settings["sources"].get(key) or {}
-            if answer.get("include") is False:
-                continue
             kind = answer.get("kind") or detected["kind"]
+            if not is_included(kind, choices_for_page(choices, plan["key"]), answer):
+                continue
             spec = library[kind]
             max_current = max_current_for(detected, answer, settings)
+            own_current = answer.get("max_current_a") or suggested_max_current(detected)
+            if kind == "RISER" and max_current is not None and not own_current:
+                max_current *= riser_share(level, top)
             # A sheet that covers several floors carries the same equipment on each: one tag per floor.
             base_tag = next_tag(kind, shared_key=key)
             tag = base_tag if len(choices_for_page(choices, plan["key"])) == 1 else f"{base_tag}.{level}"
@@ -517,8 +547,8 @@ def build_model(db: Session, project: Project, user: User) -> dict:
             else:
                 point = to_world(detected["point"], scale, origin)
                 bottom = floor.elevation_m
-                top = None if bottom is None or floor.ceiling_height_m is None else bottom + floor.ceiling_height_m
-                source.geometry = {"points": [point, list(point)], "z_values": None if top is None else [bottom, top]}
+                ceiling = None if bottom is None or floor.ceiling_height_m is None else bottom + floor.ceiling_height_m
+                source.geometry = {"points": [point, list(point)], "z_values": None if ceiling is None else [bottom, ceiling]}
 
             if spec["mounting"] == "ceiling" and floor.ceiling_height_m is not None:
                 set_field(source, "height_above_floor_m", round(floor.ceiling_height_m - spec["below_ceiling_m"], 3))
@@ -534,6 +564,13 @@ def build_model(db: Session, project: Project, user: User) -> dict:
                 set_field(source, "current_basis", "ESTIMATED")
             db.add(source)
             created_sources.append(source)
+            if kind == "RISER":
+                risers_by_level.setdefault(level, []).append(source)
+
+    created_sources += _continue_shafts(
+        project, plans, floors, risers_by_level, settings, library, top, load, lambda: next_tag("RISER")
+    )
+    db.add_all(created_sources)
     db.flush()
 
     for source in created_sources:
@@ -580,6 +617,51 @@ def build_model(db: Session, project: Project, user: User) -> dict:
         "zones": zones,
         "alignment": {str(level): {k: v for k, v in a.items() if k != "origin_px"} for level, a in alignment.items()},
     }
+
+
+def _continue_shafts(project, plans, floors, risers_by_level, settings, library, top, load, new_tag) -> list[ElectricalSource]:
+    """A shaft runs through every floor between the lowest and highest one it was seen on.
+    A floor in between where no shaft was read gets the nearest floor's shafts, below first."""
+    if not risers_by_level:
+        return []
+    spec = library["RISER"]
+    kind_current = (settings["kinds"].get("RISER") or {}).get("max_current_a")
+    seen = sorted(risers_by_level)
+    added = []
+    for level in sorted(plans):
+        floor = floors.get(level)
+        if not seen[0] < level < seen[-1] or level in risers_by_level or floor is None:
+            continue
+        if floor.scale_m_per_px is None or not floor.origin_px or floor.elevation_m is None or floor.ceiling_height_m is None:
+            continue
+        below = [l for l in seen if l < level]
+        source_level = below[-1] if below else min(l for l in seen if l > level)
+        for template in risers_by_level[source_level]:
+            if kind_current:
+                current = kind_current * riser_share(level, top) * load
+            elif template.current_a is not None:
+                current = template.current_a * riser_share(level, top) / riser_share(source_level, top)
+            else:
+                continue
+            point = list(template.geometry["points"][0])
+            riser = ElectricalSource(
+                project_id=project.id,
+                floor_id=floor.id,
+                tag=new_tag(),
+                source_type=spec["source_type"],
+                geometry={"points": [point, list(point)], "z_values": [floor.elevation_m, floor.elevation_m + floor.ceiling_height_m]},
+                confidence="LOW",
+                detection_method=AUTO,
+                user_verified=True,
+                notes=f"המשך הפיר {template.tag} (הושלם אוטומטית)",
+            )
+            ensure_details(riser)
+            for field in ("arrangement", "spacing_m"):
+                set_field(riser, field, spec[field])
+            set_field(riser, "current_a", round(current, 1))
+            set_field(riser, "current_basis", "ESTIMATED")
+            added.append(riser)
+    return added
 
 
 RISER_MERGE_M = 2.0
@@ -631,6 +713,18 @@ def _record_assumptions(db, project, user, settings, library, sources, alignment
     inferred = [str(f.calibration.get("auto_level")) for f in floors if (f.calibration or {}).get("scale_basis") == "INFERRED"]
     if inferred:
         add("scale", f"קנה המידה של התוכניות בקומות {', '.join(inferred)} הוסק מגודל המבנה בקומות האחרות.", "קנה המידה לא נקרא מהתוכנית או לא התאים לשאר הקומות.")
+    add(
+        "feeders",
+        "קווי הזנה ראשיים נכללו במרתפים ובקומת הקרקע בלבד; קווים שזוהו בקומות העליונות הם הזנות לדירות ולא נכללו.",
+        "כלל של המערכת: קווי ההזנה הראשיים עוברים במרתף ובקומת הקרקע, ומשם בפירים.",
+    )
+    if any(s.source_type == "RISER" for s in sources):
+        add(
+            "risers",
+            "הזרם בפיר ההזנה יורד מקומה לקומה: מלוא הזרם עד קומה 1, ובכל קומה מעליה חלק יחסי לקומות שמעליה. "
+            "פיר שזוהה בקומות שמעל ומתחת לקומה הושלם גם בה, באותו מיקום.",
+            "כל קומה מזינה את הדירות שבה מהפיר, כך שהזרם בפיר קטן ככל שעולים.",
+        )
     weak = [str(level) for level, a in alignment.items() if a["method"] == "BOX_CORNER"]
     if weak:
         add("alignment", f"יישור הקומות {', '.join(weak)} נעשה לפי מסגרת המבנה ולא לפי התאמת השרטוט.", "התאמת השרטוטים בין הקומות לא הייתה חד-משמעית.")

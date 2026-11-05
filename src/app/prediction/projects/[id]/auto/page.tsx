@@ -9,27 +9,6 @@ import { ProjectForm } from '../../../project-form';
 import { ApiError, api, errorText, fileUrl } from '@/lib/prediction/api';
 import { uploadPlan } from '@/lib/prediction/upload';
 
-const USE_LABELS: Record<string, string> = {
-  PARKING: 'חניון (אפור)',
-  TECHNICAL: 'טכני (אפור)',
-  RESIDENTIAL: 'מגורים (אדום)',
-  OFFICE: 'משרדים (אדום)',
-  COMMERCIAL: 'מסחר (אדום)',
-  PUBLIC: 'ציבורי (אדום)',
-  MIXED: 'מעורב (אדום)',
-};
-const SCALE_BASIS: Record<string, [string, string]> = {
-  READ: ['נקרא מהתוכנית', 'ok'],
-  INFERRED: ['הוסק, לבדיקה', 'warn'],
-  USER: ['הוזן', 'ok'],
-  MISSING: ['חסר', 'bad'],
-};
-const SHEET_LABELS: Record<string, string> = {
-  ELECTRICAL: 'חשמל',
-  ARCHITECTURAL: 'אדריכלות',
-  SINGLE_LINE: 'חד-קווית',
-  OTHER: 'אחר',
-};
 // Only these are read automatically; a single-line diagram is kept for the engineer.
 const READ_TYPES = ['ELECTRICAL', 'ARCHITECTURAL'];
 // Pages read at once. Each one is itself several model calls in parallel.
@@ -361,9 +340,16 @@ function Prediction({
   reload: () => void;
   onError: (message: string) => void;
 }) {
-  const [reading, setReading] = useState<{ done: number; total: number; failed: string[] } | null>(null);
-  const [finishing, setFinishing] = useState('');
+  const [busy, setBusy] = useState('');
+  const [failed, setFailed] = useState<string[]>([]);
   const [result, setResult] = useState<any>(null);
+  const [reports, setReports] = useState<any[]>([]);
+
+  useEffect(() => {
+    api(`${base}/reports`)
+      .then(setReports)
+      .catch(() => undefined);
+  }, [base, result]);
 
   const pages: Page[] = state.documents
     .filter((d: any) => READ_TYPES.includes(d.document_type) && ['pdf', 'png', 'jpg', 'jpeg'].includes(d.file_type))
@@ -375,48 +361,49 @@ function Prediction({
         file_name: d.page_count > 1 ? `${d.file_name} (עמוד ${page + 1})` : d.file_name,
       })),
     );
-  const analysed = new Map<string, any>(state.analyses.map((a: any) => [a.key, a]));
+  const analysed = new Set(state.analyses.map((a: any) => a.key));
   const unread = pages.filter((p) => !analysed.has(p.key));
-  const detected: any[] = state.detected;
-  const settings = state.settings;
-  const read = pages.length > 0 && unread.length === 0;
 
-  async function readPages(selection: Page[]) {
+  /** Reads what is unread, then builds, approves, calculates and issues. Stops only to ask. */
+  async function run() {
     onError('');
-    setResult(null);
-    const queue = [...selection];
-    const progress = { done: 0, total: selection.length, failed: [] as string[] };
-    setReading({ ...progress });
-    async function worker() {
-      for (let next = queue.shift(); next; next = queue.shift()) {
-        try {
-          await api(`${base}/auto/analyze`, { method: 'POST', json: { document_id: next.document_id, page: next.page } });
-        } catch (failure) {
-          progress.failed.push(`${next.file_name}: ${errorText(failure)}`);
-        }
-        progress.done += 1;
-        setReading({ ...progress, failed: [...progress.failed] });
-      }
-    }
-    await Promise.all(Array.from({ length: PARALLEL_PAGES }, worker));
-    reload();
-    if (!progress.failed.length) setReading(null);
-  }
-
-  async function finish() {
-    onError('');
+    setFailed([]);
     setResult(null);
     try {
-      setFinishing('בונה את המודל מהתוכניות…');
+      if (unread.length) {
+        const queue = [...unread];
+        const errors: string[] = [];
+        let done = 0;
+        setBusy(`קורא את התוכניות: 0 מתוך ${unread.length}…`);
+        const worker = async () => {
+          for (let next = queue.shift(); next; next = queue.shift()) {
+            try {
+              await api(`${base}/auto/analyze`, { method: 'POST', json: { document_id: next.document_id, page: next.page } });
+            } catch (failure) {
+              errors.push(`${next.file_name}: ${errorText(failure)}`);
+            }
+            done += 1;
+            setBusy(`קורא את התוכניות: ${done} מתוך ${unread.length}…`);
+          }
+        };
+        await Promise.all(Array.from({ length: PARALLEL_PAGES }, worker));
+        if (errors.length) {
+          setFailed(errors);
+          return;
+        }
+      }
+      const fresh = await api(`${base}/auto`);
+      if (fresh.missing.length) return; // The questions show below; the button continues from here.
+      setBusy('בונה את המודל…');
       await api(`${base}/auto/build`, { method: 'POST' });
-      setFinishing('מאשר, מחשב ומפיק דוח… (עד דקה)');
+      setBusy('מחשב ומפיק את הדוח… (עד דקה)');
       await ensureJobNumber();
       setResult(await api(`${base}/auto/finish`, { method: 'POST' }));
     } catch (failure) {
       const missing = failure instanceof ApiError && failure.missing.length ? `: ${failure.missing.join(' · ')}` : '';
       onError(errorText(failure) + missing);
     } finally {
-      setFinishing('');
+      setBusy('');
       reload();
     }
   }
@@ -433,286 +420,125 @@ function Prediction({
     }
   }
 
-  // Kinds found on the plans that no answer and no plan gives a current for.
-  const kindsStillMissing: string[] = state.kinds_used.filter((kind: string) =>
-    state.missing.some((m: any) => m.field === `kinds.${kind}.max_current_a`),
-  );
+  const latest = reports[0];
+  const included = state.detected.filter((d: any) => d.included);
+  const byKind = new Map<string, number>();
+  for (const source of included) {
+    const label = state.kinds[source.answer.kind || source.kind];
+    byKind.set(label, (byKind.get(label) ?? 0) + 1);
+  }
 
   return (
     <>
       {!state.ai_available && <div className="notice error">הקריאה האוטומטית לא מוגדרת בשרת (מפתח OpenAI).</div>}
 
       <section className="card">
-        <h2>3. קריאת התוכניות</h2>
-        <p className="muted small">
-          המערכת קוראת כל תוכנית: איזו קומה, קנה המידה, ואילו מקורות קרינה משורטטים בה (שנאים, לוחות, קווי הזנה, פירים). כ-30
-          שניות לתוכנית.
+        <h2>3. חיזוי אוטומטי</h2>
+        <p>
+          לחיצה אחת: המערכת קוראת את כל התוכניות, מזהה את הקומות ואת מקורות הקרינה, בונה את המודל בעצמה, מחשבת את השדה המגנטי
+          בגובה 1 מ׳ בכל הקומות ומפיקה דוח חיזוי.
         </p>
-        <div className="table-scroll">
-          <table className="data">
-            <thead>
-              <tr>
-                <th>קובץ</th>
-                <th>סוג</th>
-                <th>קומות</th>
-                <th>מקורות</th>
-                <th>הערת הקריאה</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pages.map((page) => {
-                const analysis = analysed.get(page.key);
-                return (
-                  <tr key={page.key}>
-                    <td>{page.file_name}</td>
-                    <td>{analysis ? SHEET_LABELS[analysis.sheet_kind] ?? analysis.sheet_kind : <span className="tag">לא נקרא</span>}</td>
-                    <td>{analysis?.floors?.map((f: any) => f.name).join(', ')}</td>
-                    <td className="num">{analysis?.sources ?? ''}</td>
-                    <td className="muted small">{analysis?.notes}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        <div className="row" style={{ marginTop: 8 }}>
-          <button className="btn-primary" disabled={!!reading || !unread.length || !state.ai_available} onClick={() => readPages(unread)}>
-            {unread.length ? `קריאת ${unread.length} התוכניות` : 'כל התוכניות נקראו'}
+        <div className="row">
+          <button className="btn-primary" disabled={!!busy || !pages.length || (unread.length > 0 && !state.ai_available)} onClick={run}>
+            {latest ? 'הפקת דוח מעודכן' : 'הפקת דוח חיזוי קרינה'}
           </button>
-          {read && (
-            <button disabled={!!reading || !state.ai_available} onClick={() => readPages(pages)}>
-              קריאה מחדש של הכול
-            </button>
-          )}
-          {reading && (
-            <span className="muted small">
-              קורא {reading.done} מתוך {reading.total}…
-            </span>
-          )}
+          {busy && <span className="muted">{busy}</span>}
+          {!busy && unread.length > 0 && <span className="muted small">{unread.length} תוכניות ייקראו (כ-30 שניות לתוכנית)</span>}
         </div>
-        {reading?.failed.length ? (
-          <div className="notice error">
-            {reading.failed.map((line) => (
-              <div key={line}>{line}</div>
+
+        {failed.length > 0 && (
+          <div className="notice error" style={{ marginTop: 10 }}>
+            חלק מהתוכניות לא נקראו. לחיצה נוספת תנסה לקרוא אותן שוב.
+            {failed.map((line) => (
+              <div key={line} className="small">
+                {line}
+              </div>
             ))}
           </div>
-        ) : null}
-      </section>
+        )}
 
-      {state.floors.length > 0 && (
-        <section className="card">
-          <h2>קומות שזוהו</h2>
-          <p className="muted small">
-            קומה שלא מסמנים בה אזורים נחשבת כולה לפי השימוש: חניון וטכני באפור (לא נדרש מיגון), מגורים ומשרדים באדום (שהייה
-            ממושכת). גודל המבנה מחושב מקנה המידה: אם הוא לא דומה בין הקומות, קנה המידה כנראה שגוי.
-          </p>
-          <div className="table-scroll">
-            <table className="data">
-              <thead>
-                <tr>
-                  <th>מפלס</th>
-                  <th>קומה</th>
-                  <th>תוכנית</th>
-                  <th>שימוש</th>
-                  <th>קנה מידה 1:</th>
-                  <th>גודל המבנה (מ׳)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {state.floors.map((floor: any) => {
-                  const [basisText, basisTone] = SCALE_BASIS[floor.scale_basis] ?? ['', ''];
-                  const name = (key: string) => pages.find((p) => p.key === key)?.file_name ?? key;
-                  return (
-                    <tr key={floor.level}>
-                      <td className="num">{floor.level}</td>
-                      <td>{floor.name}</td>
-                      <td>
-                        {floor.pages.length > 1 ? (
-                          <select value={floor.plan} onChange={(e) => save({ pages: { [e.target.value]: { plan_for: floor.level } } })}>
-                            {floor.pages.map((key: string) => (
-                              <option key={key} value={key}>
-                                {name(key)}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          name(floor.plan)
-                        )}
-                      </td>
-                      <td>
-                        <select value={floor.use ?? ''} onChange={(e) => save({ pages: { [floor.plan]: { use: e.target.value || null } } })}>
-                          <option value="">לא זוהה (אדום)</option>
-                          {state.uses.map((use: string) => (
-                            <option key={use} value={use}>
-                              {USE_LABELS[use] ?? use}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td>
-                        <input
-                          type="number"
-                          style={{ width: 80 }}
-                          defaultValue={floor.scale_denominator ?? ''}
-                          key={`${floor.plan}:${floor.scale_denominator}`}
-                          onBlur={(e) => {
-                            const value = e.target.value ? Number(e.target.value) : null;
-                            if (value !== floor.scale_denominator) save({ pages: { [floor.plan]: { scale_denominator: value } } });
-                          }}
-                        />{' '}
-                        <span className={`tag ${basisTone}`}>{basisText}</span>
-                      </td>
-                      <td className="num">{floor.building_size_m ? `${floor.building_size_m[0]} × ${floor.building_size_m[1]}` : ''}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
-
-      {state.floors.length > 0 && (
-        <section className="card">
-          <h2>מקורות שזוהו</h2>
-          {detected.length === 0 ? (
-            <p className="muted">לא זוהו מקורות קרינה. בדקו שהועלו תוכניות החשמל של המרתף וקומת הקרקע.</p>
-          ) : (
-            <>
-              <p className="muted small">
-                מבטלים את הסימון במה שאינו מקור אמיתי. הזרם ריק = לפי התשובה לסוג בשלב 2, או מה שכתוב בתוכנית.
-              </p>
-              <div className="table-scroll">
-                <table className="data">
-                  <thead>
-                    <tr>
-                      <th>לכלול</th>
-                      <th>קומה</th>
-                      <th>סוג</th>
-                      <th>כתוב בתוכנית</th>
-                      <th>זרם מרבי (A)</th>
-                      <th>ודאות</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {detected.map((source) => (
-                      <tr key={source.key} style={source.answer.include === false ? { opacity: 0.45 } : undefined}>
-                        <td>
-                          <input
-                            type="checkbox"
-                            checked={source.answer.include !== false}
-                            onChange={(e) => save({ sources: { [source.key]: { include: e.target.checked } } })}
-                          />
-                        </td>
-                        <td>{source.levels.join(', ')}</td>
-                        <td>
-                          <select
-                            value={source.answer.kind || source.kind}
-                            onChange={(e) => save({ sources: { [source.key]: { kind: e.target.value } } })}
-                          >
-                            {Object.entries(state.kinds).map(([kind, text]) => (
-                              <option key={kind} value={kind}>
-                                {text as string}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="small">
-                          {source.label}
-                          {source.rating_text ? ` · ${source.rating_text}` : ''}
-                        </td>
-                        <td>
-                          <input
-                            type="number"
-                            style={{ width: 90 }}
-                            placeholder={source.max_current_a ? String(source.max_current_a) : 'חסר'}
-                            defaultValue={source.answer.max_current_a ?? ''}
-                            onBlur={(e) => {
-                              const value = e.target.value ? Number(e.target.value) : null;
-                              if (value !== (source.answer.max_current_a ?? null)) save({ sources: { [source.key]: { max_current_a: value } } });
-                            }}
-                          />
-                        </td>
-                        <td>
-                          {source.confidence === 'LOW' ? (
-                            <span className="tag warn">לבדיקה</span>
-                          ) : (
-                            <span className="tag ok">{source.confidence === 'HIGH' ? 'גבוהה' : 'בינונית'}</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-          {kindsStillMissing.length > 0 && (
-            <div className="row" style={{ flexWrap: 'wrap', alignItems: 'flex-start', marginTop: 10 }}>
-              {kindsStillMissing.map((kind) => (
-                <NumberField
-                  key={kind}
-                  label={`זרם מרבי: ${state.kinds[kind]} (A)`}
-                  hint="נמצא בתוכניות ולא נענה בשלב 2"
-                  value={settings.kinds?.[kind]?.max_current_a ?? null}
-                  onSave={(v) => save({ kinds: { [kind]: { max_current_a: v } } })}
-                />
+        {!busy && state.missing.length > 0 && state.analyses.length > 0 && (
+          <div className="notice" style={{ marginTop: 10 }}>
+            <p>
+              <strong>כדי להמשיך, עוד תשובה אחת או שתיים:</strong>
+            </p>
+            <div className="row" style={{ flexWrap: 'wrap', alignItems: 'flex-start' }}>
+              {state.missing.map((item: any) => (
+                <MissingField key={item.field} item={item} settings={state.settings} save={save} />
               ))}
             </div>
+            <p className="small muted">אחרי המענה, לוחצים שוב על הכפתור.</p>
+          </div>
+        )}
+      </section>
+
+      {(result || latest) && (
+        <section className="card">
+          <h2>הדוח</h2>
+          {latest && (
+            <p>
+              <a className="btn btn-primary" href={fileUrl(`${base}/reports/${latest.id}/file`)}>
+                הורדת דוח החיזוי (גרסה {latest.version})
+              </a>{' '}
+              <span className="muted small">{new Date(latest.created_at).toLocaleString('he-IL')}</span>
+            </p>
+          )}
+          {result?.blockers?.length > 0 && (
+            <p className="small">
+              הדוח מסומן כטיוטה עד שיושלמו: {summarise(result.blockers)}.{' '}
+              {result.blockers.some((b: any) => b.code === 'REGULATION_RULE') && (
+                <>
+                  את הסף (למשל 4 mG) מפעילים ב<Link href="/prediction/regulation">כללי רגולציה</Link>.
+                </>
+              )}
+            </p>
           )}
         </section>
       )}
 
       {state.floors.length > 0 && (
         <section className="card">
-          <h2>הפקת הדוח</h2>
-          {state.missing.length > 0 ? (
-            <div className="notice">
-              חסר כדי להפיק:
-              <ul>
-                {state.missing.map((item: any) => (
-                  <li key={item.field}>{item.message}</li>
-                ))}
-              </ul>
-            </div>
-          ) : (
-            <p className="muted small">
-              הלחיצה מאשרת את המקורות שסומנו &quot;לכלול&quot; ואת המודל, מריצה חישוב בגובה 1 מ׳ ומפיקה דוח. ערכים שלא באו
-              מהתוכניות או מהתשובות נרשמים בדוח כהנחות הנדסיות.
-            </p>
-          )}
-          <div className="row">
-            <button className="btn-primary" disabled={!!finishing || state.missing.length > 0} onClick={finish}>
-              אישור והפקת דוח
-            </button>
-            {finishing && <span className="muted small">{finishing}</span>}
-          </div>
-          {result && (
-            <div className="notice" style={{ marginTop: 8 }}>
-              <p>
-                <strong>הדוח הופק (גרסה {result.report.version}).</strong>{' '}
-                <a href={fileUrl(`${base}/reports/${result.report.id}/file`)}>הורדת הדוח</a>
-              </p>
-              {result.blockers.length > 0 && (
-                <p className="small">
-                  הדוח מסומן כטיוטה עד שיושלמו: {summarise(result.blockers)}.{' '}
-                  {result.blockers.some((b: any) => b.code === 'REGULATION_RULE') && (
-                    <>
-                      את הסף (למשל 4 mG) מפעילים ב<Link href="/prediction/regulation">כללי רגולציה</Link>.
-                    </>
-                  )}
-                </p>
-              )}
-              <p className="small">
-                <Link href={`/prediction/projects/${id}/results`}>תוצאות ומפות</Link> ·{' '}
-                <Link href={`/prediction/projects/${id}/model`}>תיקון מקורות וסימון אזורים על התוכנית</Link> ·{' '}
-                <Link href={`/prediction/projects/${id}/report`}>אישור והנפקת הדוח</Link>
-              </p>
-            </div>
-          )}
+          <h2>מה המערכת זיהתה</h2>
+          <p className="small">
+            <strong>{state.floors.length} קומות:</strong> {state.floors.map((f: any) => f.name).join(' · ')}
+          </p>
+          <p className="small">
+            <strong>{included.length} מקורות קרינה:</strong>{' '}
+            {included.length
+              ? Array.from(byKind.entries())
+                  .map(([label, count]) => `${label} ${count}`)
+                  .join(' · ')
+              : 'לא זוהו. בדקו שהועלו תוכניות החשמל של המרתף וקומת הקרקע.'}
+          </p>
+          <p className="small muted">
+            חניון וקומות טכניות מחושבים כאזור ללא שהייה ממושכת (אפור), קומות מגורים ומשרדים כשהייה ממושכת (אדום). ערכים שלא נקראו
+            מהתוכניות ולא נענו בשאלות נרשמים בדוח כהנחות הנדסיות.
+          </p>
         </section>
       )}
     </>
+  );
+}
+
+/** One open question, answered in place. */
+function MissingField({ item, settings, save }: { item: any; settings: any; save: (update: Record<string, unknown>) => Promise<void> }) {
+  // "floor_height_m", "pages.<page key>.scale_denominator" or "kinds.<kind>.max_current_a".
+  const parts = String(item.field).split('.');
+  const [group, field] = [parts[0], parts[parts.length - 1]];
+  const key = parts.slice(1, -1).join('.');
+  if (!key) {
+    return (
+      <NumberField label={item.message.replace('חסר: ', '')} value={settings[group] ?? null} onSave={(v) => save({ [group]: v })} />
+    );
+  }
+  const current = settings[group]?.[key]?.[field] ?? null;
+  return (
+    <NumberField
+      label={item.message.replace('חסר ', '').replace('חסר: ', '')}
+      hint={field === 'scale_denominator' ? 'למשל 50 או 100, כפי שכתוב בטבלת הכותרת' : undefined}
+      value={current}
+      onSave={(v) => save({ [group]: { [key]: { [field]: v } } })}
+    />
   );
 }
 
