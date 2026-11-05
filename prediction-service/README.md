@@ -1,4 +1,4 @@
-# Galit ELF Prediction System
+# Galit ELF Projection
 
 מערכת של גלית – החברה לאיכות הסביבה לחיזוי שדות מגנטיים בתדר רשת החשמל (50 Hz) לפני הקמה או אכלוס.
 
@@ -7,9 +7,7 @@ AI extracts → Human verifies → Physics engine calculates → Regulation engi
             → AI drafts report → Professional reviews → System issues report
 ```
 
-**המסכים:** בתוך מערכת הדוחות, ב-`/prediction` (https://radiation-reports-production.up.railway.app/prediction).
-
-**המנוע:** https://galit-elf.vercel.app — ה-API, ושירות קטן שחותם על העלאות ישירות. הכתובת הראשית מפנה למערכת הדוחות.
+**המערכת:** https://galit-elf-projection.up.railway.app — מערכת נפרדת ב-Railway (פרויקט "Galit ELF Projection"), עם התחברות, מסד נתונים ואחסון משלה. מערכת הדוחות רק מקשרת אליה.
 
 ## מצב נוכחי: MVP 1
 
@@ -18,8 +16,6 @@ AI extracts → Human verifies → Physics engine calculates → Regulation engi
 **המנוע נבדק מול פתרונות אנליטיים בלבד.** עדיין אין השוואה למדידות שטח או לתוכנת חיזוי אחרת. ראו [validation_cases/](validation_cases/README.md).
 
 **כללי הרגולציה לא פעילים.** עד שבעל מקצוע יאמת אותם מול מקור, כל התוצאות יסומנו `REGULATION_REVIEW_REQUIRED` ולא ניתן להנפיק דוח סופי. ראו [שלב 4](docs/04-regulation-engine.md).
-
-**הפריסה על תוכניות חינמיות.** Hobby של Vercel מיועדת לשימוש לא מסחרי, והמכסות קטנות. ראו [מגבלות הפלטפורמה](docs/01-architecture.md#מגבלות-הפלטפורמה).
 
 ## מסמכי תכנון
 
@@ -43,12 +39,12 @@ $env:ELF_ADMIN_EMAIL="you@example.com"; $env:ELF_ADMIN_PASSWORD="choose-a-passwo
 ..\.venv\Scripts\python -m uvicorn app.main:app --port 8000
 ```
 
-בטרמינל שני, ממערכת הדוחות (שורש הריפו):
+בטרמינל שני, המסכים (מפנים את `/api` למנוע המקומי):
 
 ```powershell
+cd web
 npm install
-$env:PREDICTION_API_URL="http://127.0.0.1:8000"; $env:NODE_OPTIONS="--experimental-sqlite"; npm run dev
-# http://localhost:3000/prediction
+npx next build   # out/ — או: $env:WEB_DIST="..\web\out" כדי שהמנוע יגיש אותם בכתובת אחת
 ```
 
 מקומית משתמשים ב-SQLite ובתיקיית `backend/storage`, והקבצים עולים דרך ה-API.
@@ -62,29 +58,23 @@ cd backend
 
 להרצה על PostgreSQL: מגדירים `ELF_TEST_DATABASE_URL` למסד בשם `elf_test`.
 
-## פריסה ל-Vercel
+## פריסה ל-Railway
 
-| רכיב | שם | אזור |
-|---|---|---|
-| פרויקט (Services: `web` = חותם ההעלאות, `api` = המנוע) | `galit-elf` | fra1 |
-| PostgreSQL ב-Neon | `galit-elf-db` | Frankfurt |
-| Vercel Blob פרטי | `galit-elf-files` | fra1 |
+| רכיב | שם |
+|---|---|
+| פרויקט | `Galit ELF Projection` (חשבון galitinc@gmail.com) |
+| שירות: המנוע, שמגיש גם את המסכים | `galit-elf-projection`, תיקיית שורש `prediction-service`, Dockerfile |
+| PostgreSQL | `Postgres` באותו פרויקט |
+| אחסון קבצים | Volume ב-`/data` (`ELF_STORAGE_DIR=/data/storage`) |
 
-פריסה מחדש של המנוע, מתוך `prediction-service/` (לא משורש הריפו):
+הפריסה אוטומטית ב-push ל-`main` של קבצים תחת `prediction-service/` בלבד. מערכת הדוחות מתעלמת מהתיקייה הזאת, ולהפך.
 
-```powershell
-npx vercel deploy --prod
-```
+המיגרציות רצות בעליית השירות, לפני שהוא מקבל תעבורה. אם הן נכשלות, הגרסה הקודמת ממשיכה לרוץ.
 
-המיגרציות רצות אוטומטית בזמן ה-build של ייצור. אם הן נכשלות, הפריסה נכשלת והגרסה הקודמת ממשיכה לרוץ.
+משתני סביבה: `DATABASE_URL` (הפניה ל-Postgres), `ELF_JWT_SECRET`, `ELF_STORAGE_DIR`, `ELF_COOKIE_SECURE`, `OPENAI_API_KEY`, `CRM_DATABASE_URL` (חיפוש לקוחות), `REPORTS_URL` ו-`JOB_NUMBERS_TOKEN` (מרשם ה-Job Number), `PUBLIC_URL`.
 
-משתני סביבה בייצור: `ELF_JWT_SECRET`, `ELF_ADMIN_EMAIL`, `ELF_COOKIE_SECURE`, ואלה שהחיבורים של Neon ו-Blob הוסיפו. `ELF_ADMIN_PASSWORD` נדרש רק כשטבלת המשתמשים ריקה, והוסר אחרי יצירת המנהל.
+## החיבורים למערכות האחרות
 
-פרטי המנהל הראשון נשמרו ב-`deploy/.admin-credentials.txt`, שאינו נכנס ל-git ולא לפריסה.
-
-## איך זה מחובר למערכת הדוחות
-
-- המסכים נמצאים ב-`src/app/prediction/` של מערכת הדוחות, ומשתמשים בבורר הלקוחות שלה (ספריית הלקוחות שמסתנכרנת מה-CRM).
-- הדפדפן פונה רק למערכת הדוחות. `src/app/api/prediction/[...path]/route.ts` מעביר את הבקשות למנוע ב-Vercel, עם עוגיית המנוע בלבד.
-- מספר הפרויקט נלקח ממרשם ה-Job Number של מערכת הדוחות בהפקת הדוח הראשון.
-- למנוע יש התחברות משלו, כי למערכת הדוחות יש סיסמה משותפת אחת (או אף אחת), ולכן היא לא יודעת מי ביצע כל פעולה. יומן השינויים ואישור הדוח צריכים שם של אדם.
+- **CRM:** חיפוש הלקוחות ואנשי הקשר בטופס הפרויקט קורא ישירות ממסד הנתונים של ה-CRM (`/api/crm/...`), בקריאה בלבד.
+- **מערכת הדוחות:** מספר הפרויקט נלקח ממרשם ה-Job Number המשותף בהפקת הדוח הראשון, דרך `POST /api/job-numbers` במערכת הדוחות עם `JOB_NUMBERS_TOKEN`. אם המרשם לא עונה, הדוח מופק בכל זאת והמספר נלקח בהפקה הבאה.
+- **התחברות:** למערכת יש משתמשים משלה, כי יומן השינויים ואישור הדוח צריכים שם של אדם.
